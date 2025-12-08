@@ -504,13 +504,15 @@ export default function Home() {
                                   <div style={{ fontWeight: 600, color: 'var(--text-white)' }}>{tool.name}</div>
                                   <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{tool.desc}</div>
                                 </div>
-                                <span style={{
-                                  fontSize: '0.7rem',
-                                  padding: '0.25rem 0.5rem',
-                                  borderRadius: '0.25rem',
-                                  background: tool.badge === 'Python' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                                  color: tool.badge === 'Python' ? '#3b82f6' : '#22c55e'
-                                }}>{tool.badge}</span>
+                                {tool.badge && (
+                                  <span style={{
+                                    fontSize: '0.7rem',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '0.25rem',
+                                    background: tool.badge === 'Python' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                                    color: tool.badge === 'Python' ? '#3b82f6' : '#22c55e'
+                                  }}>{tool.badge}</span>
+                                )}
                               </div>
                             ))}
                           </div>
