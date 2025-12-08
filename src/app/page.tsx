@@ -364,7 +364,7 @@ export default function Home() {
                           </div>
 
                           {/* Tool Content */}
-                          {activeTool === 'dashboard' && <Dashboard tools={TOOLS} onNavigate={setActiveTool} />}
+                          {activeTool === 'dashboard' && <Dashboard tools={TOOLS} onNavigate={handleDropSelectTool} />}
                           {activeTool === 'image-converter' && <ImageConverter />}
                           {activeTool === 'cropper' && <ProductCropper />}
                           {activeTool === 'excel-splitter' && <ExcelSplitter />}
@@ -476,7 +476,7 @@ export default function Home() {
                               <div
                                 key={tool.id}
                                 onClick={() => {
-                                  setActiveTool(tool.id);
+                                  setActiveTool(tool.id as ToolId);
                                   setSpotlightOpen(false);
                                   setSearchQuery('');
                                 }}
