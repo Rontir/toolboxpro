@@ -1,0 +1,627 @@
+'use client';
+
+import { useState, useCallback, useEffect } from 'react';
+
+interface FilePreview {
+    file: File;
+    preview: string;
+}
+
+interface ProcessedImage {
+    name: string;
+    url: string;
+    originalSize: { w: number; h: number };
+    newSize: { w: number; h: number };
+}
+
+const PLATFORMS = [
+    { id: 'original', label: 'Oryginał', icon: '📐', width: 0, height: 0 },
+    { id: 'allegro', label: 'Allegro', icon: '🛒', width: 1000, height: 1000 },
+    { id: 'empik', label: 'Empik', icon: '📚', width: 800, height: 800 },
+    { id: 'shopify', label: 'Shopify', icon: '🛍️', width: 2048, height: 2048 },
+    { id: 'amazon', label: 'Amazon', icon: '📦', width: 1000, height: 1000 },
+    { id: 'instagram', label: 'Instagram', icon: '📸', width: 1080, height: 1080 },
+    { id: 'wlasny', label: 'Własny', icon: '✏️', width: 0, height: 0 },
+];
+
+const BG_COLORS = [
+    { id: 'white', color: '#ffffff', label: 'Białe' },
+    { id: 'black', color: '#000000', label: 'Czarne' },
+    { id: 'transparent', color: 'transparent', label: 'Przezroczyste' },
+    { id: 'custom', color: '', label: 'Własne' },
+];
+
+export default function ProductCropper() {
+    const [files, setFiles] = useState<FilePreview[]>([]);
+    const [platform, setPlatform] = useState('original');
+    const [customWidth, setCustomWidth] = useState(1000);
+    const [customHeight, setCustomHeight] = useState(1000);
+    const [bgOption, setBgOption] = useState('white');
+    const [customBgColor, setCustomBgColor] = useState('#ffffff');
+    const [processed, setProcessed] = useState<ProcessedImage[]>([]);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [isDragging, setIsDragging] = useState(false);
+    const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('folder');
+
+    // Auto-crop options (from Python script)
+    const [autoCrop, setAutoCrop] = useState(false);
+    const [cropTolerance, setCropTolerance] = useState(10);
+    const [cropPadding, setCropPadding] = useState(10);
+
+    // Naming options
+    const [namingOption, setNamingOption] = useState<'keep' | 'suffix'>('keep');
+
+    useEffect(() => {
+        return () => files.forEach(f => URL.revokeObjectURL(f.preview));
+    }, [files]);
+
+    const addFiles = useCallback((newFiles: File[]) => {
+        const imageFiles = newFiles.filter(f => f.type.startsWith('image/'));
+        const previews = imageFiles.map(file => ({
+            file,
+            preview: URL.createObjectURL(file),
+        }));
+        setFiles(prev => [...prev, ...previews]);
+    }, []);
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+
+        const items = e.dataTransfer.items;
+        const filePromises: Promise<File[]>[] = [];
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i].webkitGetAsEntry();
+            if (item) {
+                filePromises.push(traverseFileTree(item));
+            }
+        }
+
+        Promise.all(filePromises).then(results => {
+            const allFiles = results.flat();
+            addFiles(allFiles);
+        });
+    }, [addFiles]);
+
+    const traverseFileTree = (item: FileSystemEntry): Promise<File[]> => {
+        return new Promise((resolve) => {
+            if (item.isFile) {
+                (item as FileSystemFileEntry).file(file => resolve([file]));
+            } else if (item.isDirectory) {
+                const dirReader = (item as FileSystemDirectoryEntry).createReader();
+                dirReader.readEntries(async entries => {
+                    const files: File[] = [];
+                    for (const entry of entries) {
+                        const subFiles = await traverseFileTree(entry);
+                        files.push(...subFiles);
+                    }
+                    resolve(files);
+                });
+            } else {
+                resolve([]);
+            }
+        });
+    };
+
+    const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) addFiles(Array.from(e.target.files));
+    };
+
+    const getPlatformSize = () => {
+        if (platform === 'wlasny') return { width: customWidth, height: customHeight };
+        return PLATFORMS.find(p => p.id === platform) || { width: 1000, height: 1000 };
+    };
+
+    const getBackgroundColor = () => {
+        if (bgOption === 'custom') return customBgColor;
+        const bg = BG_COLORS.find(b => b.id === bgOption);
+        return bg?.color || '#ffffff';
+    };
+
+    // Improved auto-crop - specifically for white backgrounds
+    const autoCropImage = (
+        imgData: ImageData,
+        tolerance: number,
+        padding: number
+    ): { left: number; top: number; right: number; bottom: number } | null => {
+        const { width, height, data } = imgData;
+
+        // Sample background from multiple corners to be more accurate
+        const corners = [
+            0, // top-left
+            (width - 1) * 4, // top-right
+            ((height - 1) * width) * 4, // bottom-left
+            ((height - 1) * width + width - 1) * 4 // bottom-right
+        ];
+
+        // Check if background is white (most common case for product photos)
+        let isWhiteBg = true;
+        for (const idx of corners) {
+            if (data[idx] < 250 || data[idx + 1] < 250 || data[idx + 2] < 250) {
+                isWhiteBg = false;
+                break;
+            }
+        }
+
+        // Use corner average for background detection
+        const bgR = isWhiteBg ? 255 : data[0];
+        const bgG = isWhiteBg ? 255 : data[1];
+        const bgB = isWhiteBg ? 255 : data[2];
+
+        let minX = width, minY = height, maxX = 0, maxY = 0;
+        const tol = tolerance * 3; // Combined RGB tolerance
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const idx = (y * width + x) * 4;
+                const r = data[idx];
+                const g = data[idx + 1];
+                const b = data[idx + 2];
+                const a = data[idx + 3];
+
+                // Skip transparent pixels
+                if (a < 128) continue;
+
+                // Check if pixel differs from background
+                const diff = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+
+                if (diff > tol) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+
+        // Check if we found any content
+        if (maxX <= minX || maxY <= minY) return null;
+
+        // Add padding
+        minX = Math.max(0, minX - padding);
+        minY = Math.max(0, minY - padding);
+        maxX = Math.min(width - 1, maxX + padding);
+        maxY = Math.min(height - 1, maxY + padding);
+
+        // Return only if we're actually trimming something meaningful
+        const croppedW = maxX - minX;
+        const croppedH = maxY - minY;
+        if (croppedW >= width * 0.98 && croppedH >= height * 0.98) return null; // No trim needed
+        if (croppedW < 50 || croppedH < 50) return null; // Too small result
+
+        return { left: minX, top: minY, right: maxX, bottom: maxY };
+    };
+
+    const processImages = async () => {
+        if (files.length === 0) return;
+
+        setIsProcessing(true);
+        setProcessed([]);
+        const results: ProcessedImage[] = [];
+        const platformData = getPlatformSize();
+        const bgColor = getBackgroundColor();
+        const isTransparent = bgColor === 'transparent';
+
+        for (let i = 0; i < files.length; i++) {
+            const { file } = files[i];
+            setProgress(Math.round(((i + 1) / files.length) * 100));
+
+            try {
+                const img = await loadImage(file);
+                let srcX = 0, srcY = 0, srcW = img.width, srcH = img.height;
+
+                // Get image data for auto-crop/trim operations
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = img.width;
+                tempCanvas.height = img.height;
+                const tempCtx = tempCanvas.getContext('2d')!;
+                tempCtx.drawImage(img, 0, 0);
+                const imgData = tempCtx.getImageData(0, 0, img.width, img.height);
+
+                // Auto-crop white margins if enabled
+                if (autoCrop) {
+                    const cropResult = autoCropImage(imgData, cropTolerance, cropPadding);
+                    if (cropResult) {
+                        srcX = cropResult.left;
+                        srcY = cropResult.top;
+                        srcW = cropResult.right - cropResult.left;
+                        srcH = cropResult.bottom - cropResult.top;
+                    }
+                }
+
+                // Determine output size
+                let targetW: number, targetH: number;
+                if (platform === 'original') {
+                    // Keep size (original or after trim if autoCrop enabled)
+                    targetW = srcW;
+                    targetH = srcH;
+                } else if (platform === 'wlasny') {
+                    targetW = customWidth;
+                    targetH = customHeight;
+                } else {
+                    targetW = platformData.width;
+                    targetH = platformData.height;
+                }
+
+                // Create output canvas
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d')!;
+                canvas.width = targetW;
+                canvas.height = targetH;
+
+                // Fill background
+                if (!isTransparent) {
+                    ctx.fillStyle = bgColor;
+                    ctx.fillRect(0, 0, targetW, targetH);
+                }
+
+                // Calculate scale and position
+                let drawX: number, drawY: number, drawW: number, drawH: number;
+                if (platform === 'original') {
+                    // No scaling, just draw directly
+                    drawX = 0;
+                    drawY = 0;
+                    drawW = srcW;
+                    drawH = srcH;
+                } else {
+                    // Scale to fit and center
+                    const scale = Math.min(targetW / srcW, targetH / srcH);
+                    drawW = srcW * scale;
+                    drawH = srcH * scale;
+                    drawX = (targetW - drawW) / 2;
+                    drawY = (targetH - drawH) / 2;
+                }
+
+                // Draw image
+                ctx.drawImage(img, srcX, srcY, srcW, srcH, drawX, drawY, drawW, drawH);
+
+                // Generate output
+                const format = isTransparent ? 'image/png' : 'image/jpeg';
+                const ext = isTransparent ? 'png' : 'jpg';
+                const blob = await new Promise<Blob>((resolve) => {
+                    canvas.toBlob(b => resolve(b!), format, 0.92);
+                });
+
+                const baseName = file.name.replace(/\.[^.]+$/, '');
+                const outputName = namingOption === 'suffix'
+                    ? `${baseName}_${platform}.${ext}`
+                    : `${baseName}.${ext}`;
+
+                results.push({
+                    name: outputName,
+                    url: URL.createObjectURL(blob),
+                    originalSize: { w: img.width, h: img.height },
+                    newSize: { w: targetW, h: targetH },
+                });
+            } catch (e) {
+                console.error('Error processing', file.name, e);
+            }
+        }
+
+        setProcessed(results);
+        setProgress(100);
+        setIsProcessing(false);
+    };
+
+    const loadImage = (file: File): Promise<HTMLImageElement> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = URL.createObjectURL(file);
+        });
+    };
+
+    const downloadAll = () => {
+        processed.forEach(img => {
+            const a = document.createElement('a');
+            a.href = img.url;
+            a.download = img.name;
+            a.click();
+        });
+    };
+
+    const clearAll = () => {
+        files.forEach(f => URL.revokeObjectURL(f.preview));
+        processed.forEach(p => URL.revokeObjectURL(p.url));
+        setFiles([]);
+        setProcessed([]);
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Upload Zone */}
+            <div
+                className={`upload-zone ${isDragging ? 'border-[var(--accent)]' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+            >
+                <input
+                    type="file"
+                    id="crop-input"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => addFiles(Array.from(e.target.files || []))}
+                />
+                <input
+                    type="file"
+                    id="crop-folder-input"
+                    // @ts-expect-error webkitdirectory not in types
+                    webkitdirectory=""
+                    multiple
+                    className="hidden"
+                    onChange={handleFolderSelect}
+                />
+                <span className="icon">✂️</span>
+                <p className="title">
+                    {files.length > 0 ? `${files.length} zdjęć produktów` : 'Przeciągnij zdjęcia lub folder'}
+                </p>
+                <p className="subtitle" style={{ marginBottom: '1rem' }}>lub wybierz poniżej</p>
+
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                        className={`btn ${uploadMode === 'folder' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => { setUploadMode('folder'); document.getElementById('crop-folder-input')?.click(); }}
+                    >
+                        📁 Folder
+                    </button>
+                    <button
+                        className={`btn ${uploadMode === 'files' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => { setUploadMode('files'); document.getElementById('crop-input')?.click(); }}
+                    >
+                        🖼️ Pliki
+                    </button>
+                    {files.length > 0 && (
+                        <button onClick={clearAll} className="btn btn-secondary">
+                            🗑️ Wyczyść
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* File Preview */}
+            {files.length > 0 && (
+                <div className="card">
+                    <div className="card-header">
+                        <span>📁 Wybrane ({files.length})</span>
+                    </div>
+                    <div className="card-body">
+                        <div className="file-grid">
+                            {files.slice(0, 20).map((f, i) => (
+                                <div key={i} className="file-item">
+                                    <img src={f.preview} alt={f.file.name} />
+                                </div>
+                            ))}
+                            {files.length > 20 && (
+                                <div className="file-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>+{files.length - 20}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Platform Selection */}
+            <div>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Preset platformy:</p>
+                <div className="filter-pills">
+                    {PLATFORMS.map(p => (
+                        <button
+                            key={p.id}
+                            onClick={() => setPlatform(p.id)}
+                            className={`filter-pill ${platform === p.id ? 'active' : ''}`}
+                            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '0.75rem 1.25rem' }}
+                        >
+                            <span>{p.icon} {p.label}</span>
+                            {p.width > 0 && <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>{p.width}×{p.height}</span>}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Custom Size */}
+            {platform === 'wlasny' && (
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>Szerokość</label>
+                        <input
+                            type="number"
+                            className="form-input"
+                            value={customWidth}
+                            onChange={e => setCustomWidth(Number(e.target.value))}
+                        />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>Wysokość</label>
+                        <input
+                            type="number"
+                            className="form-input"
+                            value={customHeight}
+                            onChange={e => setCustomHeight(Number(e.target.value))}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* Background Color */}
+            <div>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Kolor tła:</p>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {BG_COLORS.map(bg => (
+                        <button
+                            key={bg.id}
+                            onClick={() => setBgOption(bg.id)}
+                            className={`filter-pill ${bgOption === bg.id ? 'active' : ''}`}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.5rem 1rem'
+                            }}
+                        >
+                            <span
+                                style={{
+                                    width: '1.25rem',
+                                    height: '1.25rem',
+                                    borderRadius: '4px',
+                                    background: bg.id === 'transparent' ? 'linear-gradient(45deg, #ddd 25%, transparent 25%, transparent 75%, #ddd 75%), linear-gradient(45deg, #ddd 25%, transparent 25%, transparent 75%, #ddd 75%)' : bg.color || '#888',
+                                    backgroundSize: bg.id === 'transparent' ? '8px 8px' : 'auto',
+                                    backgroundPosition: bg.id === 'transparent' ? '0 0, 4px 4px' : 'auto',
+                                    border: '1px solid var(--border)'
+                                }}
+                            />
+                            {bg.label}
+                        </button>
+                    ))}
+                    {bgOption === 'custom' && (
+                        <input
+                            type="color"
+                            value={customBgColor}
+                            onChange={e => setCustomBgColor(e.target.value)}
+                            style={{ width: '2.5rem', height: '2.5rem', borderRadius: '8px', cursor: 'pointer', border: 'none' }}
+                        />
+                    )}
+                </div>
+            </div>
+
+            {/* Auto-Crop Options */}
+            <div className="card">
+                <div className="card-header">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input
+                            type="checkbox"
+                            checked={autoCrop}
+                            onChange={e => setAutoCrop(e.target.checked)}
+                            style={{ accentColor: 'var(--accent)', width: '1.25rem', height: '1.25rem' }}
+                        />
+                        ✂️ Przytnij białe marginesy
+                    </label>
+                </div>
+                {autoCrop && (
+                    <div className="card-body">
+                        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                            <div style={{ flex: 1, minWidth: '150px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Tolerancja</span>
+                                    <span style={{ fontSize: '0.875rem', color: 'var(--accent)' }}>{cropTolerance}</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={50}
+                                    value={cropTolerance}
+                                    onChange={e => setCropTolerance(Number(e.target.value))}
+                                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                                />
+                            </div>
+                            <div style={{ flex: 1, minWidth: '150px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Margines</span>
+                                    <span style={{ fontSize: '0.875rem', color: 'var(--accent)' }}>{cropPadding}px</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={50}
+                                    value={cropPadding}
+                                    onChange={e => setCropPadding(Number(e.target.value))}
+                                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Naming Options */}
+            <div className="card">
+                <div className="card-header">📝 Nazewnictwo</div>
+                <div className="card-body">
+                    <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', cursor: 'pointer', color: namingOption === 'keep' ? 'var(--accent)' : 'var(--text-gray)' }}>
+                            <input
+                                type="radio"
+                                name="naming"
+                                checked={namingOption === 'keep'}
+                                onChange={() => setNamingOption('keep')}
+                                style={{ accentColor: 'var(--accent)', width: '1.25rem', height: '1.25rem' }}
+                            />
+                            Zachowaj nazwę
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(photo.jpg)</span>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', cursor: 'pointer', color: namingOption === 'suffix' ? 'var(--accent)' : 'var(--text-gray)' }}>
+                            <input
+                                type="radio"
+                                name="naming"
+                                checked={namingOption === 'suffix'}
+                                onChange={() => setNamingOption('suffix')}
+                                style={{ accentColor: 'var(--accent)', width: '1.25rem', height: '1.25rem' }}
+                            />
+                            Dodaj sufiks
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(photo_allegro.jpg)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            {/* Progress */}
+            {isProcessing && (
+                <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ color: 'var(--text-gray)' }}>Przetwarzanie...</span>
+                        <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{progress}%</span>
+                    </div>
+                    <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${progress}%` }} />
+                    </div>
+                </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button onClick={processImages} disabled={files.length === 0 || isProcessing} className="btn btn-primary">
+                    {isProcessing ? `⏳ ${progress}%` : '✂️ Kadruj zdjęcia'}
+                </button>
+                {processed.length > 0 && (
+                    <button onClick={downloadAll} className="btn btn-secondary">
+                        ⬇️ Pobierz wszystkie ({processed.length})
+                    </button>
+                )}
+            </div>
+
+            {/* Results */}
+            {processed.length > 0 && (
+                <div className="card">
+                    <div className="card-header">
+                        <span>✅ Przetworzone ({processed.length})</span>
+                        <span style={{ color: 'var(--accent)' }}>
+                            → {getPlatformSize().width}×{getPlatformSize().height}px
+                        </span>
+                    </div>
+                    <div className="card-body">
+                        <div className="file-grid">
+                            {processed.slice(0, 30).map((img, i) => (
+                                <a key={i} href={img.url} download={img.name} className="file-item" style={{ display: 'block' }}>
+                                    <img src={img.url} alt={img.name} />
+                                    <div className="file-overlay" style={{ justifyContent: 'center', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '1.5rem' }}>⬇️</span>
+                                    </div>
+                                </a>
+                            ))}
+                            {processed.length > 30 && (
+                                <div className="file-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>+{processed.length - 30}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
