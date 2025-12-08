@@ -15,8 +15,15 @@ from urllib.parse import urlparse
 import mimetypes
 from pathlib import Path
 from PIL import Image, ImageOps, ImageFilter, ImageStat
-import tkinter as tk
-from tkinter import filedialog
+
+# Optional GUI imports (not available on server)
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+    TKINTER_AVAILABLE = True
+except ImportError:
+    TKINTER_AVAILABLE = False
+
 import json
 
 warnings.filterwarnings('ignore')
@@ -29,6 +36,9 @@ class SystemUtils:
     @staticmethod
     def browse_folder() -> str:
         """Otwiera systemowe okno wyboru folderu"""
+        if not TKINTER_AVAILABLE:
+            raise RuntimeError("Funkcja browse_folder wymaga interfejsu graficznego (niedostępne na serwerze)")
+        
         try:
             # Uruchom w nowym procesie/wątku GUI
             root = tk.Tk()
