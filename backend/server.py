@@ -307,6 +307,8 @@ async def download_local_file(path: str):
 
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 ToolBox Pro Backend running on http://localhost:8000")
+    port = int(os.environ.get("PORT", 8000))
+    print(f"🚀 ToolBox Pro Backend running on port {port}")
     print("📝 Frontend: http://localhost:3000 (Next.js)")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
