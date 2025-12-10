@@ -25,6 +25,9 @@ export default function ExcelSplitter() {
     const [addSourceColumn, setAddSourceColumn] = useState(true);
     const [sortAlphabetically, setSortAlphabetically] = useState(true);
     const [removeDuplicates, setRemoveDuplicates] = useState(false);
+    // Loading state for file upload
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingText, setLoadingText] = useState('');
 
     const { consumeDroppedFile } = useDroppedFile();
 
@@ -39,11 +42,21 @@ export default function ExcelSplitter() {
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         const droppedFiles = Array.from(e.dataTransfer.files).filter(f => f.name.match(/\.xlsx?$/i));
-        if (tab === 'split' && droppedFiles[0]) {
-            setFile(droppedFiles[0]);
-        } else if (tab === 'merge') {
-            setMergeFiles(prev => [...prev, ...droppedFiles]);
-        }
+        if (droppedFiles.length === 0) return;
+
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${droppedFiles.length} plików...`);
+
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                if (tab === 'split' && droppedFiles[0]) {
+                    setFile(droppedFiles[0]);
+                } else if (tab === 'merge') {
+                    setMergeFiles(prev => [...prev, ...droppedFiles]);
+                }
+                setIsLoading(false);
+            }, 100);
+        });
     }, [tab]);
 
     // Read row count when file is selected
@@ -218,8 +231,36 @@ export default function ExcelSplitter() {
         });
     };
 
+    // Helper for file input with loading
+    const handleFileSelect = (files: FileList | null, isMerge: boolean) => {
+        if (!files || files.length === 0) return;
+        const excelFiles = Array.from(files).filter(f => f.name.match(/\.xlsx?$/i));
+        if (excelFiles.length === 0) return;
+
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${excelFiles.length} plików...`);
+
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                if (isMerge) {
+                    setMergeFiles(prev => [...prev, ...excelFiles]);
+                } else {
+                    setFile(excelFiles[0]);
+                }
+                setIsLoading(false);
+            }, 100);
+        });
+    };
+
     return (
-        <div className="max-w-4xl" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div className="max-w-4xl" style={{ display: 'flex', flexDirection: 'column', gap: '24px', position: 'relative' }}>
+            {/* Loading Overlay */}
+            {isLoading && (
+                <div className="upload-progress-overlay">
+                    <div className="upload-progress-spinner" />
+                    <p style={{ color: 'white', fontSize: '18px', marginTop: '20px' }}>{loadingText}</p>
+                </div>
+            )}
             {/* Tabs */}
             <div className="filter-pills">
                 <button
@@ -251,7 +292,7 @@ export default function ExcelSplitter() {
                             id="excel-input"
                             accept=".xlsx,.xls"
                             className="hidden"
-                            onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])}
+                            onChange={(e) => handleFileSelect(e.target.files, false)}
                         />
                         <span className="icon">📊</span>
                         <p className="title">{file?.name || 'Przeciągnij plik Excel'}</p>
@@ -379,7 +420,7 @@ export default function ExcelSplitter() {
                             accept=".xlsx,.xls"
                             multiple
                             className="hidden"
-                            onChange={(e) => setMergeFiles(prev => [...prev, ...Array.from(e.target.files || [])])}
+                            onChange={(e) => handleFileSelect(e.target.files, true)}
                         />
                         <span className="icon">📚</span>
                         <p className="title">
