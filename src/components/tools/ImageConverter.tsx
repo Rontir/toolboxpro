@@ -217,6 +217,21 @@ export default function ImageConverter() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Processing Overlay */}
+            {isProcessing && (
+                <div className="upload-progress-overlay">
+                    <div className="upload-progress-spinner" />
+                    <div className="upload-progress-bar-container">
+                        <div className="upload-progress-bar" style={{ width: `${progress}%` }} />
+                    </div>
+                    <div className="upload-progress-text">
+                        🖼️ Konwersja obrazów...
+                    </div>
+                    <div className="upload-progress-subtext">
+                        {progress}% ({Math.round(progress * files.length / 100)} / {files.length})
+                    </div>
+                </div>
+            )}
             {/* Upload Zone */}
             <div
                 className={`upload-zone ${files.length > 0 ? 'has-files' : ''} ${isDragging ? 'dragging' : ''}`}
