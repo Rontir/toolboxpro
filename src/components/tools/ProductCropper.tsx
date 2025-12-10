@@ -47,6 +47,11 @@ export default function ProductCropper() {
     // Format options
     const [outputFormat, setOutputFormat] = useState<'original' | 'jpg' | 'png' | 'webp'>('original');
 
+    // Manual crop mode
+    const [manualCropMode, setManualCropMode] = useState(false);
+    const [currentEditIndex, setCurrentEditIndex] = useState(0);
+    const [cropArea, setCropArea] = useState({ left: 0, top: 0, right: 100, bottom: 100 });
+
     // Auto-crop options (from Python script)
     const [autoCrop, setAutoCrop] = useState(false);
     const [cropTolerance, setCropTolerance] = useState(10);
@@ -691,6 +696,236 @@ export default function ProductCropper() {
                     </div>
                 </div>
             )}
+
+            {/* Manual Crop Mode Toggle */}
+            <div className="card">
+                <div className="card-header">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input
+                            type="checkbox"
+                            checked={manualCropMode}
+                            onChange={e => {
+                                setManualCropMode(e.target.checked);
+                                if (e.target.checked && files.length > 0) {
+                                    setCurrentEditIndex(0);
+                                    setCropArea({ left: 0, top: 0, right: 100, bottom: 100 });
+                                }
+                            }}
+                            style={{ accentColor: 'var(--accent)', width: '1.25rem', height: '1.25rem' }}
+                        />
+                        🎯 Tryb ręcznego kadrowania
+                    </label>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Edytuj każde zdjęcie osobno</span>
+                </div>
+                {manualCropMode && files.length > 0 && (
+                    <div className="card-body">
+                        {/* Gallery thumbnails */}
+                        <div style={{ marginBottom: '1rem' }}>
+                            <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                Zdjęcie {currentEditIndex + 1} z {files.length}
+                            </p>
+                            <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                                {files.map((f, i) => (
+                                    <div
+                                        key={i}
+                                        onClick={() => {
+                                            setCurrentEditIndex(i);
+                                            setCropArea({ left: 0, top: 0, right: 100, bottom: 100 });
+                                        }}
+                                        style={{
+                                            width: '60px',
+                                            height: '60px',
+                                            borderRadius: '8px',
+                                            overflow: 'hidden',
+                                            cursor: 'pointer',
+                                            border: currentEditIndex === i ? '3px solid var(--accent)' : '2px solid var(--border)',
+                                            flexShrink: 0
+                                        }}
+                                    >
+                                        <img
+                                            src={f.preview}
+                                            alt={f.file.name}
+                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Preview with crop overlay */}
+                        <div style={{
+                            position: 'relative',
+                            width: '100%',
+                            maxWidth: '500px',
+                            margin: '0 auto 1.5rem',
+                            background: 'var(--bg-tertiary)',
+                            borderRadius: '12px',
+                            overflow: 'hidden'
+                        }}>
+                            <img
+                                src={files[currentEditIndex].preview}
+                                alt="Preview"
+                                style={{ width: '100%', display: 'block' }}
+                            />
+                            {/* Crop overlay */}
+                            <div style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                pointerEvents: 'none'
+                            }}>
+                                {/* Top dark area */}
+                                <div style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    height: `${cropArea.top}%`,
+                                    background: 'rgba(0,0,0,0.6)'
+                                }} />
+                                {/* Bottom dark area */}
+                                <div style={{
+                                    position: 'absolute',
+                                    bottom: 0,
+                                    left: 0,
+                                    right: 0,
+                                    height: `${100 - cropArea.bottom}%`,
+                                    background: 'rgba(0,0,0,0.6)'
+                                }} />
+                                {/* Left dark area */}
+                                <div style={{
+                                    position: 'absolute',
+                                    top: `${cropArea.top}%`,
+                                    left: 0,
+                                    width: `${cropArea.left}%`,
+                                    height: `${cropArea.bottom - cropArea.top}%`,
+                                    background: 'rgba(0,0,0,0.6)'
+                                }} />
+                                {/* Right dark area */}
+                                <div style={{
+                                    position: 'absolute',
+                                    top: `${cropArea.top}%`,
+                                    right: 0,
+                                    width: `${100 - cropArea.right}%`,
+                                    height: `${cropArea.bottom - cropArea.top}%`,
+                                    background: 'rgba(0,0,0,0.6)'
+                                }} />
+                                {/* Crop border */}
+                                <div style={{
+                                    position: 'absolute',
+                                    top: `${cropArea.top}%`,
+                                    left: `${cropArea.left}%`,
+                                    width: `${cropArea.right - cropArea.left}%`,
+                                    height: `${cropArea.bottom - cropArea.top}%`,
+                                    border: '2px dashed var(--accent)',
+                                    boxSizing: 'border-box'
+                                }} />
+                            </div>
+                        </div>
+
+                        {/* Crop sliders */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>← Lewo</span>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>{cropArea.left}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={cropArea.right - 5}
+                                    value={cropArea.left}
+                                    onChange={e => setCropArea(prev => ({ ...prev, left: Number(e.target.value) }))}
+                                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                                />
+                            </div>
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Prawo →</span>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>{cropArea.right}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={cropArea.left + 5}
+                                    max={100}
+                                    value={cropArea.right}
+                                    onChange={e => setCropArea(prev => ({ ...prev, right: Number(e.target.value) }))}
+                                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                                />
+                            </div>
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>↑ Góra</span>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>{cropArea.top}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={cropArea.bottom - 5}
+                                    value={cropArea.top}
+                                    onChange={e => setCropArea(prev => ({ ...prev, top: Number(e.target.value) }))}
+                                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                                />
+                            </div>
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Dół ↓</span>
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>{cropArea.bottom}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={cropArea.top + 5}
+                                    max={100}
+                                    value={cropArea.bottom}
+                                    onChange={e => setCropArea(prev => ({ ...prev, bottom: Number(e.target.value) }))}
+                                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Reset button */}
+                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
+                            <button
+                                onClick={() => setCropArea({ left: 0, top: 0, right: 100, bottom: 100 })}
+                                className="btn btn-secondary"
+                                style={{ fontSize: '0.875rem' }}
+                            >
+                                🔄 Reset (pełny obraz)
+                            </button>
+                        </div>
+
+                        {/* Navigation */}
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginTop: '1rem' }}>
+                            <button
+                                onClick={() => {
+                                    if (currentEditIndex > 0) {
+                                        setCurrentEditIndex(prev => prev - 1);
+                                        setCropArea({ left: 0, top: 0, right: 100, bottom: 100 });
+                                    }
+                                }}
+                                disabled={currentEditIndex === 0}
+                                className="btn btn-secondary"
+                            >
+                                ← Poprzednie
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (currentEditIndex < files.length - 1) {
+                                        setCurrentEditIndex(prev => prev + 1);
+                                        setCropArea({ left: 0, top: 0, right: 100, bottom: 100 });
+                                    }
+                                }}
+                                disabled={currentEditIndex === files.length - 1}
+                                className="btn btn-primary"
+                            >
+                                Następne →
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* Actions */}
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
