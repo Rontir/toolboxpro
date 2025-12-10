@@ -50,7 +50,29 @@ export default function ProductCropper() {
     // Manual crop mode
     const [manualCropMode, setManualCropMode] = useState(false);
     const [currentEditIndex, setCurrentEditIndex] = useState(0);
-    const [cropArea, setCropArea] = useState({ left: 0, top: 0, right: 100, bottom: 100 });
+    const [cropAreas, setCropAreas] = useState<{ left: number; top: number; right: number; bottom: number }[]>([]);
+
+    // Helper to get current crop area
+    const getCurrentCropArea = () => cropAreas[currentEditIndex] || { left: 0, top: 0, right: 100, bottom: 100 };
+
+    // Helper to set current crop area
+    const setCurrentCropArea = (area: { left: number; top: number; right: number; bottom: number }) => {
+        setCropAreas(prev => {
+            const newAreas = [...prev];
+            newAreas[currentEditIndex] = area;
+            return newAreas;
+        });
+    };
+
+    // Alias for backward compatibility
+    const cropArea = getCurrentCropArea();
+    const setCropArea = (updater: { left?: number; top?: number; right?: number; bottom?: number } | ((prev: { left: number; top: number; right: number; bottom: number }) => { left: number; top: number; right: number; bottom: number })) => {
+        if (typeof updater === 'function') {
+            setCurrentCropArea(updater(cropArea));
+        } else {
+            setCurrentCropArea({ ...cropArea, ...updater });
+        }
+    };
 
     // Auto-crop options (from Python script)
     const [autoCrop, setAutoCrop] = useState(false);
@@ -228,8 +250,17 @@ export default function ProductCropper() {
                 tempCtx.drawImage(img, 0, 0);
                 const imgData = tempCtx.getImageData(0, 0, img.width, img.height);
 
-                // Auto-crop white margins if enabled
-                if (autoCrop) {
+                // Manual crop mode - apply user-defined crop area for this image
+                const imageCropArea = cropAreas[i] || { left: 0, top: 0, right: 100, bottom: 100 };
+                if (manualCropMode && cropAreas[i]) {
+                    // Convert percentage to pixels
+                    srcX = Math.round(img.width * imageCropArea.left / 100);
+                    srcY = Math.round(img.height * imageCropArea.top / 100);
+                    srcW = Math.round(img.width * (imageCropArea.right - imageCropArea.left) / 100);
+                    srcH = Math.round(img.height * (imageCropArea.bottom - imageCropArea.top) / 100);
+                }
+                // Auto-crop white margins if enabled (and no manual crop set for this image)
+                else if (autoCrop) {
                     const cropResult = autoCropImage(imgData, cropTolerance, cropPadding);
                     if (cropResult) {
                         srcX = cropResult.left;
