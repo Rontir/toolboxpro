@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useStats } from '../Stats';
 
 interface FilePreview {
     file: File;
@@ -43,6 +44,9 @@ export default function ProductCropper() {
     const [progress, setProgress] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
     const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('files');
+
+    // Stats tracking
+    const { recordUsage } = useStats();
 
     // Format options
     const [outputFormat, setOutputFormat] = useState<'original' | 'jpg' | 'png' | 'webp'>('original');
@@ -431,6 +435,11 @@ export default function ProductCropper() {
         setProcessed(results);
         setProgress(100);
         setIsProcessing(false);
+
+        // Update stats counter
+        if (results.length > 0) {
+            recordUsage('cropper', results.length);
+        }
     };
 
     const loadImage = (file: File): Promise<HTMLImageElement> => {

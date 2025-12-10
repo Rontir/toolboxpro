@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 import { useHistory } from '@/components/History';
 import { useDroppedFile } from '@/components/DroppedFileContext';
+import { useStats } from '@/components/Stats';
 
 interface FilePreview {
     file: File;
@@ -34,6 +35,7 @@ export default function ImageConverter() {
 
     const { addToHistory } = useHistory();
     const { consumeDroppedFile } = useDroppedFile();
+    const { recordUsage } = useStats();
 
     // Check for dropped file on mount
     useEffect(() => {
@@ -180,6 +182,9 @@ export default function ImageConverter() {
                     'Oszczędność': `${Math.round((1 - totalNewSize / totalOrigSize) * 100)}%`
                 }
             });
+
+            // Update stats counter
+            recordUsage('converter', results.length);
         }
     };
 
