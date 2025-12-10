@@ -18,17 +18,23 @@ export default function DesignToggle() {
 
     const toggleDesign = () => {
         const newDesign = design === 'classic' ? 'glass' : 'classic';
+        console.log('Design toggled to:', newDesign);
         setDesign(newDesign);
 
         // Apply design
         if (newDesign === 'glass') {
             document.documentElement.setAttribute('data-design', 'glass');
+            console.log('Applied glass design');
         } else {
             document.documentElement.removeAttribute('data-design');
+            console.log('Applied classic design');
         }
 
         // Save preference
         localStorage.setItem('toolbox-design', newDesign);
+
+        // Force style recalculation
+        document.body.offsetHeight;
     };
 
     if (!mounted) return null;
