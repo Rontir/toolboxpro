@@ -21,20 +21,23 @@ export default function DesignToggle() {
         console.log('Design toggled to:', newDesign);
         setDesign(newDesign);
 
-        // Apply design
-        if (newDesign === 'glass') {
-            document.documentElement.setAttribute('data-design', 'glass');
-            console.log('Applied glass design');
-        } else {
-            document.documentElement.removeAttribute('data-design');
-            console.log('Applied classic design');
+        // Apply design directly to document
+        if (typeof window !== 'undefined') {
+            if (newDesign === 'glass') {
+                document.documentElement.setAttribute('data-design', 'glass');
+                console.log('Set data-design to glass');
+            } else {
+                document.documentElement.removeAttribute('data-design');
+                console.log('Removed data-design');
+            }
+
+            // Verify it was set
+            const currentValue = document.documentElement.getAttribute('data-design');
+            console.log('Current data-design value:', currentValue);
         }
 
         // Save preference
         localStorage.setItem('toolbox-design', newDesign);
-
-        // Force style recalculation
-        document.body.offsetHeight;
     };
 
     if (!mounted) return null;
