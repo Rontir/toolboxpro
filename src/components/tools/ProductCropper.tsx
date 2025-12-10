@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 interface FilePreview {
     file: File;
@@ -81,6 +81,55 @@ export default function ProductCropper() {
 
     // Naming options
     const [namingOption, setNamingOption] = useState<'keep' | 'suffix'>('keep');
+
+    // Drag state for crop box
+    const [dragCorner, setDragCorner] = useState<'tl' | 'tr' | 'bl' | 'br' | 'move' | null>(null);
+    const cropContainerRef = useRef<HTMLDivElement>(null);
+
+    // Handle mouse move for crop drag
+    const handleCropMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!dragCorner || !cropContainerRef.current) return;
+
+        const rect = cropContainerRef.current.getBoundingClientRect();
+        const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+        const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+
+        setCropArea(prev => {
+            const minSize = 10; // Minimum 10% size
+            switch (dragCorner) {
+                case 'tl':
+                    return {
+                        ...prev,
+                        left: Math.min(x, prev.right - minSize),
+                        top: Math.min(y, prev.bottom - minSize)
+                    };
+                case 'tr':
+                    return {
+                        ...prev,
+                        right: Math.max(x, prev.left + minSize),
+                        top: Math.min(y, prev.bottom - minSize)
+                    };
+                case 'bl':
+                    return {
+                        ...prev,
+                        left: Math.min(x, prev.right - minSize),
+                        bottom: Math.max(y, prev.top + minSize)
+                    };
+                case 'br':
+                    return {
+                        ...prev,
+                        right: Math.max(x, prev.left + minSize),
+                        bottom: Math.max(y, prev.top + minSize)
+                    };
+                default:
+                    return prev;
+            }
+        });
+    }, [dragCorner, setCropArea]);
+
+    const handleCropMouseUp = useCallback(() => {
+        setDragCorner(null);
+    }, []);
 
     useEffect(() => {
         return () => files.forEach(f => URL.revokeObjectURL(f.preview));
@@ -783,29 +832,39 @@ export default function ProductCropper() {
                             </div>
                         </div>
 
-                        {/* Preview with crop overlay */}
-                        <div style={{
-                            position: 'relative',
-                            width: '100%',
-                            maxWidth: '500px',
-                            margin: '0 auto 1.5rem',
-                            background: 'var(--bg-tertiary)',
-                            borderRadius: '12px',
-                            overflow: 'hidden'
-                        }}>
+                        {/* Preview with crop overlay - DRAGGABLE CORNERS */}
+                        <div
+                            ref={cropContainerRef}
+                            style={{
+                                position: 'relative',
+                                width: '100%',
+                                maxWidth: '500px',
+                                margin: '0 auto 1.5rem',
+                                background: 'var(--bg-tertiary)',
+                                borderRadius: '12px',
+                                overflow: 'visible',
+                                cursor: dragCorner ? 'grabbing' : 'default'
+                            }}
+                            onMouseMove={handleCropMouseMove}
+                            onMouseUp={handleCropMouseUp}
+                            onMouseLeave={handleCropMouseUp}
+                        >
                             <img
                                 src={files[currentEditIndex].preview}
                                 alt="Preview"
-                                style={{ width: '100%', display: 'block' }}
+                                style={{ width: '100%', display: 'block', borderRadius: '12px', userSelect: 'none' }}
+                                draggable={false}
                             />
-                            {/* Crop overlay */}
+                            {/* Crop overlay - dark areas */}
                             <div style={{
                                 position: 'absolute',
                                 top: 0,
                                 left: 0,
                                 right: 0,
                                 bottom: 0,
-                                pointerEvents: 'none'
+                                pointerEvents: 'none',
+                                borderRadius: '12px',
+                                overflow: 'hidden'
                             }}>
                                 {/* Top dark area */}
                                 <div style={{
@@ -843,81 +902,124 @@ export default function ProductCropper() {
                                     height: `${cropArea.bottom - cropArea.top}%`,
                                     background: 'rgba(0,0,0,0.6)'
                                 }} />
-                                {/* Crop border */}
-                                <div style={{
+                            </div>
+
+                            {/* Crop box border */}
+                            <div style={{
+                                position: 'absolute',
+                                top: `${cropArea.top}%`,
+                                left: `${cropArea.left}%`,
+                                width: `${cropArea.right - cropArea.left}%`,
+                                height: `${cropArea.bottom - cropArea.top}%`,
+                                border: '2px solid var(--accent)',
+                                boxSizing: 'border-box',
+                                pointerEvents: 'none'
+                            }}>
+                                {/* Grid lines */}
+                                <div style={{ position: 'absolute', left: '33.33%', top: 0, bottom: 0, width: '1px', background: 'rgba(255,255,255,0.3)' }} />
+                                <div style={{ position: 'absolute', left: '66.66%', top: 0, bottom: 0, width: '1px', background: 'rgba(255,255,255,0.3)' }} />
+                                <div style={{ position: 'absolute', top: '33.33%', left: 0, right: 0, height: '1px', background: 'rgba(255,255,255,0.3)' }} />
+                                <div style={{ position: 'absolute', top: '66.66%', left: 0, right: 0, height: '1px', background: 'rgba(255,255,255,0.3)' }} />
+                            </div>
+
+                            {/* Draggable corners */}
+                            {/* Top-Left */}
+                            <div
+                                onMouseDown={(e) => { e.preventDefault(); setDragCorner('tl'); }}
+                                style={{
                                     position: 'absolute',
                                     top: `${cropArea.top}%`,
                                     left: `${cropArea.left}%`,
-                                    width: `${cropArea.right - cropArea.left}%`,
-                                    height: `${cropArea.bottom - cropArea.top}%`,
-                                    border: '2px dashed var(--accent)',
-                                    boxSizing: 'border-box'
-                                }} />
+                                    width: '20px',
+                                    height: '20px',
+                                    transform: 'translate(-50%, -50%)',
+                                    background: 'var(--accent)',
+                                    borderRadius: '50%',
+                                    cursor: 'nwse-resize',
+                                    border: '3px solid white',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                    zIndex: 10
+                                }}
+                            />
+                            {/* Top-Right */}
+                            <div
+                                onMouseDown={(e) => { e.preventDefault(); setDragCorner('tr'); }}
+                                style={{
+                                    position: 'absolute',
+                                    top: `${cropArea.top}%`,
+                                    left: `${cropArea.right}%`,
+                                    width: '20px',
+                                    height: '20px',
+                                    transform: 'translate(-50%, -50%)',
+                                    background: 'var(--accent)',
+                                    borderRadius: '50%',
+                                    cursor: 'nesw-resize',
+                                    border: '3px solid white',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                    zIndex: 10
+                                }}
+                            />
+                            {/* Bottom-Left */}
+                            <div
+                                onMouseDown={(e) => { e.preventDefault(); setDragCorner('bl'); }}
+                                style={{
+                                    position: 'absolute',
+                                    top: `${cropArea.bottom}%`,
+                                    left: `${cropArea.left}%`,
+                                    width: '20px',
+                                    height: '20px',
+                                    transform: 'translate(-50%, -50%)',
+                                    background: 'var(--accent)',
+                                    borderRadius: '50%',
+                                    cursor: 'nesw-resize',
+                                    border: '3px solid white',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                    zIndex: 10
+                                }}
+                            />
+                            {/* Bottom-Right */}
+                            <div
+                                onMouseDown={(e) => { e.preventDefault(); setDragCorner('br'); }}
+                                style={{
+                                    position: 'absolute',
+                                    top: `${cropArea.bottom}%`,
+                                    left: `${cropArea.right}%`,
+                                    width: '20px',
+                                    height: '20px',
+                                    transform: 'translate(-50%, -50%)',
+                                    background: 'var(--accent)',
+                                    borderRadius: '50%',
+                                    cursor: 'nwse-resize',
+                                    border: '3px solid white',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                                    zIndex: 10
+                                }}
+                            />
+
+                            {/* Size indicator */}
+                            <div style={{
+                                position: 'absolute',
+                                bottom: '-30px',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                background: 'var(--bg-card)',
+                                padding: '4px 12px',
+                                borderRadius: '6px',
+                                fontSize: '0.8rem',
+                                color: 'var(--accent)',
+                                whiteSpace: 'nowrap'
+                            }}>
+                                {Math.round(cropArea.right - cropArea.left)}% × {Math.round(cropArea.bottom - cropArea.top)}%
                             </div>
                         </div>
 
-                        {/* Crop sliders */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>← Lewo</span>
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>{cropArea.left}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min={0}
-                                    max={cropArea.right - 5}
-                                    value={cropArea.left}
-                                    onChange={e => setCropArea(prev => ({ ...prev, left: Number(e.target.value) }))}
-                                    style={{ width: '100%', accentColor: 'var(--accent)' }}
-                                />
-                            </div>
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Prawo →</span>
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>{cropArea.right}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min={cropArea.left + 5}
-                                    max={100}
-                                    value={cropArea.right}
-                                    onChange={e => setCropArea(prev => ({ ...prev, right: Number(e.target.value) }))}
-                                    style={{ width: '100%', accentColor: 'var(--accent)' }}
-                                />
-                            </div>
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>↑ Góra</span>
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>{cropArea.top}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min={0}
-                                    max={cropArea.bottom - 5}
-                                    value={cropArea.top}
-                                    onChange={e => setCropArea(prev => ({ ...prev, top: Number(e.target.value) }))}
-                                    style={{ width: '100%', accentColor: 'var(--accent)' }}
-                                />
-                            </div>
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Dół ↓</span>
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--accent)' }}>{cropArea.bottom}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min={cropArea.top + 5}
-                                    max={100}
-                                    value={cropArea.bottom}
-                                    onChange={e => setCropArea(prev => ({ ...prev, bottom: Number(e.target.value) }))}
-                                    style={{ width: '100%', accentColor: 'var(--accent)' }}
-                                />
-                            </div>
-                        </div>
+                        {/* Instructions */}
+                        <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                            🎯 Przeciągnij zielone rogi żeby przyciąć zdjęcie
+                        </p>
 
                         {/* Reset button */}
-                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.5rem' }}>
                             <button
                                 onClick={() => setCropArea({ left: 0, top: 0, right: 100, bottom: 100 })}
                                 className="btn btn-secondary"
@@ -933,7 +1035,6 @@ export default function ProductCropper() {
                                 onClick={() => {
                                     if (currentEditIndex > 0) {
                                         setCurrentEditIndex(prev => prev - 1);
-                                        setCropArea({ left: 0, top: 0, right: 100, bottom: 100 });
                                     }
                                 }}
                                 disabled={currentEditIndex === 0}
@@ -945,7 +1046,6 @@ export default function ProductCropper() {
                                 onClick={() => {
                                     if (currentEditIndex < files.length - 1) {
                                         setCurrentEditIndex(prev => prev + 1);
-                                        setCropArea({ left: 0, top: 0, right: 100, bottom: 100 });
                                     }
                                 }}
                                 disabled={currentEditIndex === files.length - 1}
