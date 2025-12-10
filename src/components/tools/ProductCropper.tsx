@@ -42,7 +42,7 @@ export default function ProductCropper() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
-    const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('folder');
+    const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('files');
 
     // Format options
     const [outputFormat, setOutputFormat] = useState<'original' | 'jpg' | 'png' | 'webp'>('original');
@@ -381,6 +381,13 @@ export default function ProductCropper() {
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
+                onClick={() => {
+                    if (uploadMode === 'files') {
+                        document.getElementById('crop-input')?.click();
+                    } else {
+                        document.getElementById('crop-folder-input')?.click();
+                    }
+                }}
             >
                 <input
                     type="file"
@@ -435,8 +442,37 @@ export default function ProductCropper() {
                     <div className="card-body">
                         <div className="file-grid">
                             {files.slice(0, 20).map((f, i) => (
-                                <div key={i} className="file-item">
+                                <div key={i} className="file-item" style={{ position: 'relative' }}>
                                     <img src={f.preview} alt={f.file.name} />
+                                    <button
+                                        onClick={() => {
+                                            URL.revokeObjectURL(f.preview);
+                                            setFiles(prev => prev.filter((_, index) => index !== i));
+                                        }}
+                                        className="file-remove-btn"
+                                        style={{
+                                            position: 'absolute',
+                                            top: '0.5rem',
+                                            right: '0.5rem',
+                                            width: '2rem',
+                                            height: '2rem',
+                                            borderRadius: '50%',
+                                            background: 'rgba(220, 38, 38, 0.9)',
+                                            border: 'none',
+                                            color: 'white',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '1.2rem',
+                                            fontWeight: 'bold',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(220, 38, 38, 1)'}
+                                        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(220, 38, 38, 0.9)'}
+                                    >
+                                        ×
+                                    </button>
                                 </div>
                             ))}
                             {files.length > 20 && (

@@ -29,7 +29,7 @@ export default function ImageConverter() {
     const [progress, setProgress] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
     const [namingOption, setNamingOption] = useState<'keep' | 'random'>('keep');
-    const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('folder');
+    const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('files');
     const [compareIndex, setCompareIndex] = useState<number | null>(null);
 
     const { addToHistory } = useHistory();
@@ -218,6 +218,13 @@ export default function ImageConverter() {
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
+                onClick={() => {
+                    if (uploadMode === 'files') {
+                        document.getElementById('img-input')?.click();
+                    } else {
+                        document.getElementById('folder-input')?.click();
+                    }
+                }}
             >
                 <input
                     type="file"
