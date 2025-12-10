@@ -214,7 +214,7 @@ export default function ImageConverter() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Upload Zone */}
             <div
-                className={`upload-zone ${isDragging ? 'border-[var(--accent)]' : ''}`}
+                className={`upload-zone ${files.length > 0 ? 'has-files' : ''} ${isDragging ? 'border-[var(--accent)]' : ''}`}
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
@@ -242,19 +242,31 @@ export default function ImageConverter() {
                 </p>
                 <p className="subtitle" style={{ marginBottom: '1rem' }}>lub wybierz poniżej</p>
 
-                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    <button
-                        onClick={() => { setUploadMode('folder'); document.getElementById('folder-input')?.click(); }}
-                        className={`btn ${uploadMode === 'folder' ? 'btn-primary' : 'btn-secondary'}`}
-                    >
-                        📁 Wybierz folder
-                    </button>
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                     <button
                         onClick={() => { setUploadMode('files'); document.getElementById('img-input')?.click(); }}
                         className={`btn ${uploadMode === 'files' ? 'btn-primary' : 'btn-secondary'}`}
                     >
                         🖼️ Wybierz pliki
                     </button>
+                    <button
+                        onClick={() => { setUploadMode('folder'); document.getElementById('folder-input')?.click(); }}
+                        className={`btn ${uploadMode === 'folder' ? 'btn-primary' : 'btn-secondary'}`}
+                    >
+                        📁 Wybierz folder
+                    </button>
+                    {files.length > 0 && (
+                        <button
+                            onClick={() => {
+                                setFiles([]);
+                                setConverted([]);
+                            }}
+                            className="btn btn-secondary"
+                            style={{ background: 'var(--bg-tertiary)' }}
+                        >
+                            🗑️ Wyczyść
+                        </button>
+                    )}
                 </div>
             </div>
 

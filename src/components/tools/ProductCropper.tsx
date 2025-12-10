@@ -44,6 +44,9 @@ export default function ProductCropper() {
     const [isDragging, setIsDragging] = useState(false);
     const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('folder');
 
+    // Format options
+    const [outputFormat, setOutputFormat] = useState<'original' | 'jpg' | 'png' | 'webp'>('original');
+
     // Auto-crop options (from Python script)
     const [autoCrop, setAutoCrop] = useState(false);
     const [cropTolerance, setCropTolerance] = useState(10);
@@ -277,17 +280,57 @@ export default function ProductCropper() {
                 // Draw image
                 ctx.drawImage(img, srcX, srcY, srcW, srcH, drawX, drawY, drawW, drawH);
 
+                // Determine output format
+                let finalFormat: string;
+                let finalExt: string;
+
+                if (outputFormat === 'original') {
+                    // Preserve original format
+                    const originalExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+                    if (['jpg', 'jpeg'].includes(originalExt)) {
+                        finalFormat = 'image/jpeg';
+                        finalExt = 'jpg';
+                    } else if (originalExt === 'png') {
+                        finalFormat = 'image/png';
+                        finalExt = 'png';
+                    } else if (originalExt === 'webp') {
+                        finalFormat = 'image/webp';
+                        finalExt = 'webp';
+                    } else {
+                        // Fallback for unknown formats
+                        finalFormat = isTransparent ? 'image/png' : 'image/jpeg';
+                        finalExt = isTransparent ? 'png' : 'jpg';
+                    }
+                } else {
+                    // Use selected format
+                    switch (outputFormat) {
+                        case 'jpg':
+                            finalFormat = 'image/jpeg';
+                            finalExt = 'jpg';
+                            break;
+                        case 'png':
+                            finalFormat = 'image/png';
+                            finalExt = 'png';
+                            break;
+                        case 'webp':
+                            finalFormat = 'image/webp';
+                            finalExt = 'webp';
+                            break;
+                        default:
+                            finalFormat = 'image/jpeg';
+                            finalExt = 'jpg';
+                    }
+                }
+
                 // Generate output
-                const format = isTransparent ? 'image/png' : 'image/jpeg';
-                const ext = isTransparent ? 'png' : 'jpg';
                 const blob = await new Promise<Blob>((resolve) => {
-                    canvas.toBlob(b => resolve(b!), format, 0.92);
+                    canvas.toBlob(b => resolve(b!), finalFormat, 0.92);
                 });
 
                 const baseName = file.name.replace(/\.[^.]+$/, '');
                 const outputName = namingOption === 'suffix'
-                    ? `${baseName}_${platform}.${ext}`
-                    : `${baseName}.${ext}`;
+                    ? `${baseName}_${platform}.${finalExt}`
+                    : `${baseName}.${finalExt}`;
 
                 results.push({
                     name: outputName,
@@ -334,7 +377,7 @@ export default function ProductCropper() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Upload Zone */}
             <div
-                className={`upload-zone ${isDragging ? 'border-[var(--accent)]' : ''}`}
+                className={`upload-zone ${files.length > 0 ? 'has-files' : ''} ${isDragging ? 'border-[var(--accent)]' : ''}`}
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
@@ -356,27 +399,27 @@ export default function ProductCropper() {
                     className="hidden"
                     onChange={handleFolderSelect}
                 />
-                <span className="icon">✂️</span>
+                <span className="icon">✏️</span>
                 <p className="title">
                     {files.length > 0 ? `${files.length} zdjęć produktów` : 'Przeciągnij zdjęcia lub folder'}
                 </p>
                 <p className="subtitle" style={{ marginBottom: '1rem' }}>lub wybierz poniżej</p>
 
-                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    <button
-                        className={`btn ${uploadMode === 'folder' ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => { setUploadMode('folder'); document.getElementById('crop-folder-input')?.click(); }}
-                    >
-                        📁 Folder
-                    </button>
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                     <button
                         className={`btn ${uploadMode === 'files' ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => { setUploadMode('files'); document.getElementById('crop-input')?.click(); }}
                     >
                         🖼️ Pliki
                     </button>
+                    <button
+                        className={`btn ${uploadMode === 'folder' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => { setUploadMode('folder'); document.getElementById('crop-folder-input')?.click(); }}
+                    >
+                        📁 Folder
+                    </button>
                     {files.length > 0 && (
-                        <button onClick={clearAll} className="btn btn-secondary">
+                        <button onClick={clearAll} className="btn btn-secondary" style={{ background: 'var(--bg-tertiary)' }}>
                             🗑️ Wyczyść
                         </button>
                     )}
@@ -489,6 +532,37 @@ export default function ProductCropper() {
                 </div>
             </div>
 
+            {/* Output Format Selector */}
+            <div>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Format wyjściowy:</p>
+                <div className="filter-pills">
+                    <button
+                        onClick={() => setOutputFormat('original')}
+                        className={`filter-pill ${outputFormat === 'original' ? 'active' : ''}`}
+                    >
+                        📄 Oryginalny
+                    </button>
+                    <button
+                        onClick={() => setOutputFormat('jpg')}
+                        className={`filter-pill ${outputFormat === 'jpg' ? 'active' : ''}`}
+                    >
+                        🖼️ JPG
+                    </button>
+                    <button
+                        onClick={() => setOutputFormat('png')}
+                        className={`filter-pill ${outputFormat === 'png' ? 'active' : ''}`}
+                    >
+                        🎨 PNG
+                    </button>
+                    <button
+                        onClick={() => setOutputFormat('webp')}
+                        className={`filter-pill ${outputFormat === 'webp' ? 'active' : ''}`}
+                    >
+                        ⚡ WebP
+                    </button>
+                </div>
+            </div>
+
             {/* Auto-Crop Options */}
             <div className="card">
                 <div className="card-header">
@@ -499,7 +573,7 @@ export default function ProductCropper() {
                             onChange={e => setAutoCrop(e.target.checked)}
                             style={{ accentColor: 'var(--accent)', width: '1.25rem', height: '1.25rem' }}
                         />
-                        ✂️ Przytnij białe marginesy
+                        ✂️ Przytnij według koloru tła
                     </label>
                 </div>
                 {autoCrop && (
