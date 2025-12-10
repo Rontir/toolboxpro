@@ -39,6 +39,7 @@ import BatchRenamer from '@/components/tools/BatchRenamer';
 import BatchProcessor from '@/components/tools/BatchProcessor';
 import PriceCalculator from '@/components/tools/PriceCalculator';
 import SeoMetaGenerator from '@/components/tools/SeoMetaGenerator';
+import DesignToggle from '@/components/DesignToggle';
 
 type ToolId = 'dashboard' | 'piko-empiko' | 'image-converter' | 'excel-splitter' | 'html-fixer' | 'ean-checker' | 'json-html' | 'desc-html' | 'perfume' | 'cropper' | 'struktur' | 'compare' | 'joiner' | 'translator' | 'emoji-remover' | 'batch-renamer' | 'batch-processor' | 'price-calc' | 'seo-meta';
 
@@ -341,6 +342,7 @@ export default function Home() {
                           onSelectTool={handleDropSelectTool}
                         />
                         <GlobalMouseTracker />
+                        <DesignToggle />
 
                         {/* Content Area */}
                         <main className="content-area">
