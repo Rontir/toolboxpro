@@ -28,6 +28,9 @@ export default function HtmlFixer() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [processedCount, setProcessedCount] = useState(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    // Loading state for file upload
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingText, setLoadingText] = useState('');
 
     const fixHtmlString = useCallback((html: string): string => {
         let result = html;
@@ -74,6 +77,8 @@ export default function HtmlFixer() {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${file.name}...`);
         setExcelFile(file);
         setExcelData([]);
         setSelectedColumn('');
@@ -93,6 +98,7 @@ export default function HtmlFixer() {
             console.error('Error reading Excel file:', error);
             alert('Błąd podczas wczytywania pliku Excel');
         }
+        setIsLoading(false);
     };
 
     const processExcel = async () => {
@@ -169,7 +175,14 @@ export default function HtmlFixer() {
     };
 
     return (
-        <div className="max-w-5xl" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div className="max-w-5xl" style={{ display: 'flex', flexDirection: 'column', gap: '24px', position: 'relative' }}>
+            {/* Loading Overlay */}
+            {isLoading && (
+                <div className="upload-progress-overlay">
+                    <div className="upload-progress-spinner" />
+                    <p style={{ color: 'white', fontSize: '18px', marginTop: '20px' }}>{loadingText}</p>
+                </div>
+            )}
             {/* Mode Toggle */}
             <div className="card">
                 <div className="card-header">📂 Tryb pracy</div>
