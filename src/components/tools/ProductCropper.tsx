@@ -43,6 +43,8 @@ export default function ProductCropper() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingText, setLoadingText] = useState('');
     const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('files');
 
     // Stats tracking
@@ -151,6 +153,8 @@ export default function ProductCropper() {
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
+        setIsLoading(true);
+        setLoadingText('📂 Wczytywanie plików...');
 
         const items = e.dataTransfer.items;
         const filePromises: Promise<File[]>[] = [];
@@ -164,7 +168,13 @@ export default function ProductCropper() {
 
         Promise.all(filePromises).then(results => {
             const allFiles = results.flat();
-            addFiles(allFiles);
+            setLoadingText(`📸 Tworzenie podglądów (${allFiles.length} plików)...`);
+
+            // Use setTimeout to allow UI to update
+            setTimeout(() => {
+                addFiles(allFiles);
+                setIsLoading(false);
+            }, 50);
         });
     }, [addFiles]);
 
@@ -469,19 +479,23 @@ export default function ProductCropper() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {/* Processing Overlay */}
-            {isProcessing && (
+            {/* Loading/Processing Overlay */}
+            {(isProcessing || isLoading) && (
                 <div className="upload-progress-overlay">
                     <div className="upload-progress-spinner" />
-                    <div className="upload-progress-bar-container">
-                        <div className="upload-progress-bar" style={{ width: `${progress}%` }} />
-                    </div>
+                    {isProcessing && (
+                        <div className="upload-progress-bar-container">
+                            <div className="upload-progress-bar" style={{ width: `${progress}%` }} />
+                        </div>
+                    )}
                     <div className="upload-progress-text">
-                        ✂️ Kadrowanie zdjęć...
+                        {isLoading ? loadingText : '✂️ Kadrowanie zdjęć...'}
                     </div>
-                    <div className="upload-progress-subtext">
-                        {progress}% ({Math.round(progress * files.length / 100)} / {files.length})
-                    </div>
+                    {isProcessing && (
+                        <div className="upload-progress-subtext">
+                            {progress}% ({Math.round(progress * files.length / 100)} / {files.length})
+                        </div>
+                    )}
                 </div>
             )}
             {/* Upload Zone */}
