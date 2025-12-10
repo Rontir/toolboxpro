@@ -110,11 +110,45 @@ export default function ImageConverter() {
         });
     };
 
+    // Wrapper to show loading before processing files
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = Array.from(e.target.files || []);
+        if (selectedFiles.length === 0) return;
+
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${selectedFiles.length} plików...`);
+
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                setLoadingText(`📸 Tworzenie podglądów...`);
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        addFiles(selectedFiles);
+                        setIsLoading(false);
+                    }, 50);
+                });
+            }, 50);
+        });
+    };
+
     const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const fileList = e.target.files;
-        if (fileList) {
-            addFiles(Array.from(fileList));
-        }
+        const selectedFiles = Array.from(e.target.files || []);
+        if (selectedFiles.length === 0) return;
+
+        setIsLoading(true);
+        setLoadingText(`📁 Wczytywanie folderu (${selectedFiles.length} plików)...`);
+
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                setLoadingText(`📸 Tworzenie podglądów...`);
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        addFiles(selectedFiles);
+                        setIsLoading(false);
+                    }, 50);
+                });
+            }, 50);
+        });
     };
 
     const removeFile = (index: number) => {
@@ -265,7 +299,7 @@ export default function ImageConverter() {
                     accept="image/*"
                     multiple
                     className="hidden"
-                    onChange={(e) => addFiles(Array.from(e.target.files || []))}
+                    onChange={handleFileSelect}
                 />
                 <input
                     type="file"
