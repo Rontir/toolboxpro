@@ -135,36 +135,47 @@ export default function EanChecker() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [rawData, setRawData] = useState<ExcelRow[]>([]);
     const [isDragging, setIsDragging] = useState(false);
+    // Loading state for file upload
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingText, setLoadingText] = useState('');
 
     const handleFile = useCallback((f: File) => {
-        setFile(f);
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const data = new Uint8Array(e.target?.result as ArrayBuffer);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const sheetName = workbook.SheetNames[0];
-            const sheet = workbook.Sheets[sheetName];
-            const json = XLSX.utils.sheet_to_json<ExcelRow>(sheet, { defval: '' });
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${f.name}...`);
 
-            if (json.length > 0) {
-                const cols = Object.keys(json[0]);
-                setColumns(cols);
-                setRawData(json);
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                setFile(f);
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const sheet = workbook.Sheets[sheetName];
+                    const json = XLSX.utils.sheet_to_json<ExcelRow>(sheet, { defval: '' });
 
-                // Auto-detect EAN column
-                const eanCol = cols.find(c => c.toLowerCase().includes('ean')) || cols[0];
-                setEanColumn(eanCol);
+                    if (json.length > 0) {
+                        const cols = Object.keys(json[0]);
+                        setColumns(cols);
+                        setRawData(json);
 
-                // Auto-detect description columns
-                const descCols = cols.filter(c =>
-                    c.toLowerCase().includes('opis') ||
-                    c.toLowerCase().includes('description') ||
-                    c.toLowerCase().includes('empik')
-                );
-                setSearchColumns(descCols.length > 0 ? descCols : []);
-            }
-        };
-        reader.readAsArrayBuffer(f);
+                        // Auto-detect EAN column
+                        const eanCol = cols.find(c => c.toLowerCase().includes('ean')) || cols[0];
+                        setEanColumn(eanCol);
+
+                        // Auto-detect description columns
+                        const descCols = cols.filter(c =>
+                            c.toLowerCase().includes('opis') ||
+                            c.toLowerCase().includes('description') ||
+                            c.toLowerCase().includes('empik')
+                        );
+                        setSearchColumns(descCols.length > 0 ? descCols : []);
+                    }
+                    setIsLoading(false);
+                };
+                reader.readAsArrayBuffer(f);
+            }, 100);
+        });
     }, []);
 
     const handleDrop = useCallback((e: React.DragEvent) => {
@@ -245,7 +256,14 @@ export default function EanChecker() {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'relative' }}>
+            {/* Loading Overlay */}
+            {isLoading && (
+                <div className="upload-progress-overlay">
+                    <div className="upload-progress-spinner" />
+                    <p style={{ color: 'white', fontSize: '18px', marginTop: '20px' }}>{loadingText}</p>
+                </div>
+            )}
             {/* Upload */}
             <div
                 className={`upload-zone ${isDragging ? 'dragging' : ''}`}
