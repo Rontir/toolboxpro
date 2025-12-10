@@ -248,7 +248,7 @@ export default function EanChecker() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Upload */}
             <div
-                className={`upload-zone ${isDragging ? 'border-[var(--accent)]' : ''}`}
+                className={`upload-zone ${isDragging ? 'dragging' : ''}`}
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}

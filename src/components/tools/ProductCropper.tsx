@@ -413,7 +413,7 @@ export default function ProductCropper() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Upload Zone */}
             <div
-                className={`upload-zone ${files.length > 0 ? 'has-files' : ''} ${isDragging ? 'border-[var(--accent)]' : ''}`}
+                className={`upload-zone ${files.length > 0 ? 'has-files' : ''} ${isDragging ? 'dragging' : ''}`}
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
