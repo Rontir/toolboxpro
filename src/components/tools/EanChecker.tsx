@@ -143,39 +143,47 @@ export default function EanChecker() {
         setIsLoading(true);
         setLoadingText(`📂 Wczytywanie ${f.name}...`);
 
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                setFile(f);
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const data = new Uint8Array(e.target?.result as ArrayBuffer);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const sheetName = workbook.SheetNames[0];
-                    const sheet = workbook.Sheets[sheetName];
-                    const json = XLSX.utils.sheet_to_json<ExcelRow>(sheet, { defval: '' });
+        // Use setTimeout to ensure loading UI renders before heavy work
+        setTimeout(() => {
+            setFile(f);
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                setLoadingText(`📊 Parsowanie Excel (${(f.size / 1024 / 1024).toFixed(1)} MB)...`);
 
-                    if (json.length > 0) {
-                        const cols = Object.keys(json[0]);
-                        setColumns(cols);
-                        setRawData(json);
+                // Another yield to show parsing text before XLSX.read blocks
+                setTimeout(() => {
+                    try {
+                        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const sheetName = workbook.SheetNames[0];
+                        const sheet = workbook.Sheets[sheetName];
+                        const json = XLSX.utils.sheet_to_json<ExcelRow>(sheet, { defval: '' });
 
-                        // Auto-detect EAN column
-                        const eanCol = cols.find(c => c.toLowerCase().includes('ean')) || cols[0];
-                        setEanColumn(eanCol);
+                        if (json.length > 0) {
+                            const cols = Object.keys(json[0]);
+                            setColumns(cols);
+                            setRawData(json);
 
-                        // Auto-detect description columns
-                        const descCols = cols.filter(c =>
-                            c.toLowerCase().includes('opis') ||
-                            c.toLowerCase().includes('description') ||
-                            c.toLowerCase().includes('empik')
-                        );
-                        setSearchColumns(descCols.length > 0 ? descCols : []);
+                            // Auto-detect EAN column
+                            const eanCol = cols.find(c => c.toLowerCase().includes('ean')) || cols[0];
+                            setEanColumn(eanCol);
+
+                            // Auto-detect description columns
+                            const descCols = cols.filter(c =>
+                                c.toLowerCase().includes('opis') ||
+                                c.toLowerCase().includes('description') ||
+                                c.toLowerCase().includes('empik')
+                            );
+                            setSearchColumns(descCols.length > 0 ? descCols : []);
+                        }
+                    } catch (err) {
+                        console.error('Error parsing Excel:', err);
                     }
                     setIsLoading(false);
-                };
-                reader.readAsArrayBuffer(f);
-            }, 100);
-        });
+                }, 50);
+            };
+            reader.readAsArrayBuffer(f);
+        }, 50);
     }, []);
 
     const handleDrop = useCallback((e: React.DragEvent) => {

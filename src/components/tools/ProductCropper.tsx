@@ -224,25 +224,21 @@ export default function ProductCropper() {
     };
 
     // Wrapper to show loading before processing files
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length === 0) return;
 
         setIsLoading(true);
         setLoadingText(`📂 Wczytywanie ${selectedFiles.length} plików...`);
 
-        // Use requestAnimationFrame to ensure UI updates before heavy processing
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                setLoadingText(`📸 Tworzenie podglądów...`);
-                requestAnimationFrame(() => {
-                    setTimeout(() => {
-                        addFiles(selectedFiles);
-                        setIsLoading(false);
-                    }, 50);
-                });
-            }, 50);
-        });
+        // Small delay to render loading UI
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        try {
+            await addFiles(selectedFiles);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
