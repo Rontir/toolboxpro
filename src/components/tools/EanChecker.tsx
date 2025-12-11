@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import { useExcelWorker } from '@/hooks/useExcelWorker';
 
 interface ExcelRow {
     [key: string]: string;
@@ -139,52 +140,43 @@ export default function EanChecker() {
     const [isLoading, setIsLoading] = useState(false);
     const [loadingText, setLoadingText] = useState('');
 
-    const handleFile = useCallback((f: File) => {
+    // Web Worker for Excel parsing
+    const { parseExcel } = useExcelWorker<ExcelRow>();
+
+    const handleFile = useCallback(async (f: File) => {
         setIsLoading(true);
         setLoadingText(`📂 Wczytywanie ${f.name}...`);
+        setFile(f);
 
-        // Use setTimeout to ensure loading UI renders before heavy work
-        setTimeout(() => {
-            setFile(f);
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                setLoadingText(`📊 Parsowanie Excel (${(f.size / 1024 / 1024).toFixed(1)} MB)...`);
+        try {
+            // Update text before heavy work
+            await new Promise(resolve => setTimeout(resolve, 50));
+            setLoadingText(`📊 Parsowanie Excel (${(f.size / 1024 / 1024).toFixed(1)} MB)...`);
 
-                // Another yield to show parsing text before XLSX.read blocks
-                setTimeout(() => {
-                    try {
-                        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-                        const workbook = XLSX.read(data, { type: 'array' });
-                        const sheetName = workbook.SheetNames[0];
-                        const sheet = workbook.Sheets[sheetName];
-                        const json = XLSX.utils.sheet_to_json<ExcelRow>(sheet, { defval: '' });
+            const { headers: cols, rows: json } = await parseExcel(f);
 
-                        if (json.length > 0) {
-                            const cols = Object.keys(json[0]);
-                            setColumns(cols);
-                            setRawData(json);
+            if (json.length > 0) {
+                setColumns(cols);
+                setRawData(json);
 
-                            // Auto-detect EAN column
-                            const eanCol = cols.find(c => c.toLowerCase().includes('ean')) || cols[0];
-                            setEanColumn(eanCol);
+                // Auto-detect EAN column
+                const eanCol = cols.find(c => c.toLowerCase().includes('ean')) || cols[0];
+                setEanColumn(eanCol);
 
-                            // Auto-detect description columns
-                            const descCols = cols.filter(c =>
-                                c.toLowerCase().includes('opis') ||
-                                c.toLowerCase().includes('description') ||
-                                c.toLowerCase().includes('empik')
-                            );
-                            setSearchColumns(descCols.length > 0 ? descCols : []);
-                        }
-                    } catch (err) {
-                        console.error('Error parsing Excel:', err);
-                    }
-                    setIsLoading(false);
-                }, 50);
-            };
-            reader.readAsArrayBuffer(f);
-        }, 50);
-    }, []);
+                // Auto-detect description columns
+                const descCols = cols.filter(c =>
+                    c.toLowerCase().includes('opis') ||
+                    c.toLowerCase().includes('description') ||
+                    c.toLowerCase().includes('empik')
+                );
+                setSearchColumns(descCols.length > 0 ? descCols : []);
+            }
+        } catch (err) {
+            console.error('Error parsing Excel:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [parseExcel]);
 
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
