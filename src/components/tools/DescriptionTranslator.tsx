@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import * as XLSX from 'xlsx';
+import { useExcelWorker } from '@/hooks/useExcelWorker';
 
 type Provider = 'google' | 'deepl' | 'libre';
 
@@ -25,6 +26,12 @@ export default function DescriptionTranslator() {
     const [result, setResult] = useState<TranslateResult | null>(null);
     const [outputBlob, setOutputBlob] = useState<Blob | null>(null);
     const [error, setError] = useState<string | null>(null);
+    // Loading state for file upload
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingText, setLoadingText] = useState('');
+
+    // Web Worker for Excel parsing
+    const { parseExcel } = useExcelWorker();
 
     const languages = [
         { code: 'pl', name: 'Polski' },
@@ -52,14 +59,18 @@ export default function DescriptionTranslator() {
         setFile(f);
         setResult(null);
         setOutputBlob(null);
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${f.name}...`);
         try {
-            const { headers } = await loadFile(f);
+            const { headers } = await parseExcel(f);
             setColumns(headers);
             // Auto-select column with "opis" in name
             const opisCol = headers.find(h => h.toLowerCase().includes('opis'));
             setSelectedColumn(opisCol || headers[0] || '');
         } catch {
             setError('Błąd wczytywania pliku');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -204,7 +215,15 @@ export default function DescriptionTranslator() {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'relative' }}>
+            {/* Loading Overlay */}
+            {isLoading && (
+                <div className="upload-progress-overlay">
+                    <div className="spinner"></div>
+                    <p>{loadingText}</p>
+                </div>
+            )}
+
             <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                 Automatyczne tłumaczenie opisów produktów
             </p>

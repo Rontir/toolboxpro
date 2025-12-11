@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useDroppedFile } from '@/components/DroppedFileContext';
+import { useExcelWorker } from '@/hooks/useExcelWorker';
 
 type TabType = 'split' | 'merge';
 
@@ -31,6 +32,9 @@ export default function ExcelSplitter() {
 
     const { consumeDroppedFile } = useDroppedFile();
 
+    // Web Worker for Excel parsing
+    const { parseExcel } = useExcelWorker();
+
     // Check for dropped file on mount
     useEffect(() => {
         const droppedFile = consumeDroppedFile();
@@ -59,25 +63,27 @@ export default function ExcelSplitter() {
         });
     }, [tab]);
 
-    // Read row count when file is selected
+    // Read row count when file is selected (using Web Worker)
     useEffect(() => {
         if (!file) {
             setTotalRows(0);
             return;
         }
-        (async () => {
-            try {
-                const XLSX = await import('xlsx');
-                const buffer = await file.arrayBuffer();
-                const workbook = XLSX.read(buffer);
-                const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
-                setTotalRows(Math.max(0, data.length - 1)); // minus header
-            } catch {
+
+        setIsLoading(true);
+        setLoadingText(`📊 Liczenie wierszy...`);
+
+        parseExcel(file)
+            .then(({ totalRows: rows }) => {
+                setTotalRows(rows);
+            })
+            .catch(() => {
                 setTotalRows(0);
-            }
-        })();
-    }, [file]);
+            })
+            .finally(() => {
+                setIsLoading(false);
+            });
+    }, [file, parseExcel]);
 
     const estimatedChunks = totalRows > 0 && rowsPerFile > 0
         ? Math.ceil(totalRows / rowsPerFile)

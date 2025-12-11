@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import { useExcelWorker } from '@/hooks/useExcelWorker';
 
 interface CompareResult {
     onlyInA: number;
@@ -33,6 +34,12 @@ export default function ExcelCompare() {
     const [outputBlob, setOutputBlob] = useState<Blob | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [showFilter, setShowFilter] = useState<'all' | 'only_a' | 'only_b' | 'different'>('all');
+    // Loading state for file upload
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingText, setLoadingText] = useState('');
+
+    // Web Worker for Excel parsing
+    const { parseExcel } = useExcelWorker();
 
     const loadFile = async (file: File): Promise<{ headers: string[], rows: Record<string, unknown>[] }> => {
         const data = await file.arrayBuffer();
@@ -48,13 +55,17 @@ export default function ExcelCompare() {
         setResult(null);
         setDiffs([]);
         setOutputBlob(null);
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${file.name}...`);
         try {
-            const { headers } = await loadFile(file);
+            const { headers } = await parseExcel(file);
             setColumnsA(headers);
             // Auto-select first column as key
             if (headers.length > 0 && !keyColumnA) setKeyColumnA(headers[0]);
         } catch {
             setError('Błąd wczytywania pliku A');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -63,13 +74,17 @@ export default function ExcelCompare() {
         setResult(null);
         setDiffs([]);
         setOutputBlob(null);
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${file.name}...`);
         try {
-            const { headers } = await loadFile(file);
+            const { headers } = await parseExcel(file);
             setColumnsB(headers);
             // Auto-select first column as key
             if (headers.length > 0 && !keyColumnB) setKeyColumnB(headers[0]);
         } catch {
             setError('Błąd wczytywania pliku B');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -208,7 +223,15 @@ export default function ExcelCompare() {
     );
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'relative' }}>
+            {/* Loading Overlay */}
+            {isLoading && (
+                <div className="upload-progress-overlay">
+                    <div className="spinner"></div>
+                    <p>{loadingText}</p>
+                </div>
+            )}
+
             <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                 Porównaj dwa pliki Excel i znajdź różnice
             </p>

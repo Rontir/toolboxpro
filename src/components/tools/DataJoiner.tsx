@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import * as XLSX from 'xlsx';
+import { useExcelWorker } from '@/hooks/useExcelWorker';
 
 interface JoinResult {
     matched: number;
@@ -23,6 +24,12 @@ export default function DataJoiner() {
     const [outputBlob, setOutputBlob] = useState<Blob | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [joinType, setJoinType] = useState<'left' | 'inner'>('left');
+    // Loading state for file upload
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingText, setLoadingText] = useState('');
+
+    // Web Worker for Excel parsing
+    const { parseExcel } = useExcelWorker();
 
     const loadFile = async (file: File): Promise<{ headers: string[], rows: Record<string, unknown>[] }> => {
         const data = await file.arrayBuffer();
@@ -37,12 +44,17 @@ export default function DataJoiner() {
         setMainFile(file);
         setResult(null);
         setOutputBlob(null);
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${file.name}...`);
+
         try {
-            const { headers } = await loadFile(file);
+            const { headers } = await parseExcel(file);
             setMainColumns(headers);
             if (headers.length > 0 && !mainKeyCol) setMainKeyCol(headers[0]);
         } catch {
             setError('Błąd wczytywania pliku głównego');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -50,14 +62,19 @@ export default function DataJoiner() {
         setLookupFile(file);
         setResult(null);
         setOutputBlob(null);
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${file.name}...`);
+
         try {
-            const { headers } = await loadFile(file);
+            const { headers } = await parseExcel(file);
             setLookupColumns(headers);
             if (headers.length > 0 && !lookupKeyCol) setLookupKeyCol(headers[0]);
             // Select all columns by default except key
             setSelectedLookupCols(headers.filter((_, i) => i > 0));
         } catch {
             setError('Błąd wczytywania pliku słownikowego');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -168,7 +185,15 @@ export default function DataJoiner() {
     const canProcess = mainFile && lookupFile && mainKeyCol && lookupKeyCol && selectedLookupCols.length > 0;
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'relative' }}>
+            {/* Loading Overlay */}
+            {isLoading && (
+                <div className="upload-progress-overlay">
+                    <div className="spinner"></div>
+                    <p>{loadingText}</p>
+                </div>
+            )}
+
             <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                 Łącz dane z dwóch plików Excel (jak VLOOKUP)
             </p>
