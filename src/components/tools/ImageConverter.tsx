@@ -52,13 +52,37 @@ export default function ImageConverter() {
         return () => files.forEach(f => URL.revokeObjectURL(f.preview));
     }, [files]);
 
-    const addFiles = useCallback((newFiles: File[]) => {
+    const addFiles = useCallback(async (newFiles: File[]) => {
         const imageFiles = newFiles.filter(f => f.type.startsWith('image/'));
-        const previews = imageFiles.map(file => ({
-            file,
-            preview: URL.createObjectURL(file),
-        }));
-        setFiles(prev => [...prev, ...previews]);
+
+        // For small sets, process immediately
+        if (imageFiles.length <= 20) {
+            const previews = imageFiles.map(file => ({
+                file,
+                preview: URL.createObjectURL(file),
+            }));
+            setFiles(prev => [...prev, ...previews]);
+            return;
+        }
+
+        // For large sets, process in batches to keep UI responsive
+        const BATCH_SIZE = 15;
+
+        for (let i = 0; i < imageFiles.length; i += BATCH_SIZE) {
+            const batch = imageFiles.slice(i, i + BATCH_SIZE);
+            const previews = batch.map(file => ({
+                file,
+                preview: URL.createObjectURL(file),
+            }));
+
+            setFiles(prev => [...prev, ...previews]);
+            setLoadingText(`📸 Ładowanie ${Math.min(i + BATCH_SIZE, imageFiles.length)}/${imageFiles.length} plików...`);
+
+            // Yield to event loop to allow UI updates
+            if (i + BATCH_SIZE < imageFiles.length) {
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+        }
     }, []);
 
     const handleDrop = useCallback((e: React.DragEvent) => {
