@@ -3,6 +3,9 @@
 import { useState, useCallback } from 'react';
 import { useToast } from '@/components/Toast';
 
+// Use environment variable for API, fallback to localhost for development
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 interface LogEntry {
     timestamp: string;
     message: string;
@@ -155,7 +158,6 @@ export default function PikoEmpiko() {
         addLog('Rozpoczynam przetwarzanie...', 'info');
 
         try {
-            const API = 'http://localhost:8000';
             const formData = new FormData();
             formData.append('file', file);
             formData.append('col_index', colIndex);
@@ -172,7 +174,7 @@ export default function PikoEmpiko() {
             formData.append('save_paths_to_excel', String(savePathsToExcel));
             formData.append('pim_version', pimVersion);
 
-            const res = await fetch(`${API}/api/piko-empiko`, { method: 'POST', body: formData });
+            const res = await fetch(`${API_BASE}/api/piko-empiko`, { method: 'POST', body: formData });
             if (!res.ok) throw new Error('Upload failed');
 
             const { job_id } = await res.json();
@@ -180,7 +182,7 @@ export default function PikoEmpiko() {
 
             const poll = setInterval(async () => {
                 try {
-                    const pRes = await fetch(`${API}/api/progress/${job_id}`);
+                    const pRes = await fetch(`${API_BASE}/api/progress/${job_id}`);
                     const pData = await pRes.json();
                     setProgress(pData.progress || 0);
                     setStatus(`${pData.progress}%`);
@@ -192,7 +194,7 @@ export default function PikoEmpiko() {
                         setStatus('Zakończono!');
                         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
                         setDownloadFilename(`piko_images_${timestamp}.zip`);
-                        setDownloadUrl(`${API}/api/download/${job_id}`);
+                        setDownloadUrl(`${API_BASE}/api/download/${job_id}`);
                         addLog('Zakończono!', 'success');
                         if (soundEnabled) new Audio().play().catch(() => { });
                         showSuccess('Plik gotowy!');
@@ -206,7 +208,7 @@ export default function PikoEmpiko() {
         } catch (e: unknown) {
             setIsProcessing(false);
             const msg = e instanceof Error ? e.message : String(e);
-            addLog(`Błąd: ${msg}. Backend na localhost:8000?`, 'error');
+            addLog(`Błąd: ${msg}. Backend niedostępny? Sprawdź połączenie.`, 'error');
         }
     };
 
@@ -224,7 +226,6 @@ export default function PikoEmpiko() {
         addLog(`Rozpoczynam tryb ${activeMode}: ${MODES.find(m => m.id === activeMode)?.title}`, 'info');
 
         try {
-            const API = 'http://localhost:8000';
             const formData = new FormData();
             formData.append('mode', String(activeMode));
             formData.append('folder_path', folderPath);
@@ -235,7 +236,7 @@ export default function PikoEmpiko() {
                 formData.append('file', file);
             }
 
-            const res = await fetch(`${API}/api/piko-local`, { method: 'POST', body: formData });
+            const res = await fetch(`${API_BASE}/api/piko-local`, { method: 'POST', body: formData });
             if (!res.ok) throw new Error('Request failed');
 
             const { job_id } = await res.json();
@@ -243,7 +244,7 @@ export default function PikoEmpiko() {
 
             const poll = setInterval(async () => {
                 try {
-                    const pRes = await fetch(`${API}/api/progress/${job_id}`);
+                    const pRes = await fetch(`${API_BASE}/api/progress/${job_id}`);
                     const pData = await pRes.json();
                     setProgress(pData.progress || 0);
                     setStatus(`${pData.progress}%`);
@@ -378,7 +379,7 @@ export default function PikoEmpiko() {
                                 onClick={async () => {
                                     try {
                                         addLog('Otwieranie okna wyboru folderu...', 'info');
-                                        const res = await fetch('http://localhost:8000/api/browse-folder');
+                                        const res = await fetch(`${API_BASE}/api/browse-folder`);
                                         const data = await res.json();
                                         if (data.path) {
                                             setFolderPath(data.path);
@@ -443,7 +444,7 @@ export default function PikoEmpiko() {
                                                 className="btn btn-secondary"
                                                 onClick={async () => {
                                                     try {
-                                                        await fetch('http://localhost:8000/api/open-file', {
+                                                        await fetch(`${API_BASE}/api/open-file`, {
                                                             method: 'POST',
                                                             headers: { 'Content-Type': 'application/json' },
                                                             body: JSON.stringify({ file_path: localResult.file })
@@ -460,7 +461,7 @@ export default function PikoEmpiko() {
                                             <button
                                                 className="btn btn-primary"
                                                 onClick={() => {
-                                                    const url = `http://localhost:8000/api/download-file?path=${encodeURIComponent(localResult.file!)}`;
+                                                    const url = `${API_BASE}/api/download-file?path=${encodeURIComponent(localResult.file!)}`;
                                                     window.open(url, '_blank');
                                                     addLog('Pobieranie pliku...', 'info');
                                                 }}
