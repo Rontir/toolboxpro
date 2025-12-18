@@ -174,7 +174,7 @@ export default function ImageConverter() {
         setIsLoading(false);
     }, [extractFilesFromZip]);
 
-    const handleDrop = useCallback((e: React.DragEvent) => {
+    const handleDrop = useCallback(async (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
         setIsLoading(true);
@@ -190,16 +190,13 @@ export default function ImageConverter() {
             }
         }
 
-        Promise.all(filePromises).then(results => {
-            const allFiles = results.flat();
-            setLoadingText(`📸 Tworzenie podglądów (${allFiles.length} plików)...`);
+        const results = await Promise.all(filePromises);
+        const allFiles = results.flat();
+        setLoadingText(`📸 Przetwarzanie ${allFiles.length} plików...`);
 
-            setTimeout(() => {
-                addFilesWithZip(allFiles);
-                setIsLoading(false);
-            }, 50);
-        });
-    }, [addFiles]);
+        // addFilesWithZip handles ZIP extraction and sets isLoading(false) when done
+        await addFilesWithZip(allFiles);
+    }, [addFilesWithZip]);
 
     const traverseFileTree = (item: FileSystemEntry): Promise<File[]> => {
         return new Promise((resolve) => {
