@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useStats } from '../Stats';
+import JSZip from 'jszip';
 
 interface FilePreview {
     file: File;
@@ -87,6 +88,9 @@ export default function ProductCropper() {
 
     // Naming options
     const [namingOption, setNamingOption] = useState<'keep' | 'suffix'>('keep');
+
+    // ZIP export option
+    const [packAsZip, setPackAsZip] = useState(true);
 
     // Drag state for crop box
     const [dragCorner, setDragCorner] = useState<'tl' | 'tr' | 'bl' | 'br' | 'move' | null>(null);
@@ -520,13 +524,65 @@ export default function ProductCropper() {
         });
     };
 
-    const downloadAll = () => {
-        processed.forEach(img => {
+
+    const downloadAll = async () => {
+        if (processed.length === 0) return;
+
+        // If only 1 file OR ZIP mode is off, download individually
+        if (processed.length === 1 || !packAsZip) {
+            processed.forEach(img => {
+                const a = document.createElement('a');
+                a.href = img.url;
+                a.download = img.name;
+                a.click();
+            });
+            return;
+        }
+
+        // Create ZIP for multiple files
+        setIsLoading(true);
+        setLoadingText('📦 Pakowanie do ZIP...');
+
+        try {
+            const zip = new JSZip();
+
+            // Add each processed image to the ZIP
+            for (let i = 0; i < processed.length; i++) {
+                const img = processed[i];
+                setLoadingText(`📦 Pakowanie ${i + 1}/${processed.length}...`);
+
+                // Fetch blob from URL
+                const response = await fetch(img.url);
+                const blob = await response.blob();
+
+                zip.file(img.name, blob);
+            }
+
+            setLoadingText('📦 Generowanie archiwum ZIP...');
+
+            // Generate ZIP and download
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const zipUrl = URL.createObjectURL(zipBlob);
+
             const a = document.createElement('a');
-            a.href = img.url;
-            a.download = img.name;
+            a.href = zipUrl;
+            a.download = `kadrowanie_${new Date().toISOString().slice(0, 10)}.zip`;
             a.click();
-        });
+
+            URL.revokeObjectURL(zipUrl);
+        } catch (error) {
+            console.error('Error creating ZIP:', error);
+            // Fallback to individual downloads
+            processed.forEach(img => {
+                const a = document.createElement('a');
+                a.href = img.url;
+                a.download = img.name;
+                a.click();
+            });
+        } finally {
+            setIsLoading(false);
+            setLoadingText('');
+        }
     };
 
     const clearAll = () => {
@@ -1156,14 +1212,34 @@ export default function ProductCropper() {
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button onClick={processImages} disabled={files.length === 0 || isProcessing} className="btn btn-primary">
                     {isProcessing ? `⏳ ${progress}%` : '✂️ Kadruj zdjęcia'}
                 </button>
                 {processed.length > 0 && (
-                    <button onClick={downloadAll} className="btn btn-secondary">
-                        ⬇️ Pobierz wszystkie ({processed.length})
-                    </button>
+                    <>
+                        <button onClick={downloadAll} className="btn btn-secondary" disabled={isLoading}>
+                            {packAsZip && processed.length > 1 ? '📦 Pobierz ZIP' : '⬇️ Pobierz'} ({processed.length})
+                        </button>
+                        {processed.length > 1 && (
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontSize: '0.85rem',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={packAsZip}
+                                    onChange={(e) => setPackAsZip(e.target.checked)}
+                                    style={{ accentColor: 'var(--accent)' }}
+                                />
+                                Pakuj do ZIP
+                            </label>
+                        )}
+                    </>
                 )}
             </div>
 
