@@ -145,8 +145,57 @@ export default function ProductCropper() {
         return () => files.forEach(f => URL.revokeObjectURL(f.preview));
     }, [files]);
 
+    // Extract images from ZIP file
+    const extractFilesFromZip = useCallback(async (zipFile: File): Promise<File[]> => {
+        try {
+            setLoadingText(`📦 Rozpakowywanie ${zipFile.name}...`);
+            const zip = await JSZip.loadAsync(zipFile);
+            const imageFiles: File[] = [];
+
+            const entries = Object.entries(zip.files);
+            for (let i = 0; i < entries.length; i++) {
+                const [path, zipEntry] = entries[i];
+
+                // Skip directories and hidden files
+                if (zipEntry.dir || path.startsWith('__MACOSX') || path.startsWith('.')) continue;
+
+                // Check if it's an image
+                const ext = path.toLowerCase().split('.').pop();
+                if (!['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif'].includes(ext || '')) continue;
+
+                setLoadingText(`📦 Rozpakowywanie ${i + 1}/${entries.length}...`);
+
+                const blob = await zipEntry.async('blob');
+                const fileName = path.split('/').pop() || path;
+                const file = new File([blob], fileName, { type: `image/${ext === 'jpg' ? 'jpeg' : ext}` });
+                imageFiles.push(file);
+            }
+
+            return imageFiles;
+        } catch (error) {
+            console.error('Error extracting ZIP:', error);
+            return [];
+        }
+    }, []);
+
     const addFiles = useCallback(async (newFiles: File[]) => {
-        const imageFiles = newFiles.filter(f => f.type.startsWith('image/'));
+        // Separate ZIP files from regular image files
+        const zipFiles = newFiles.filter(f => f.name.toLowerCase().endsWith('.zip'));
+        let imageFiles = newFiles.filter(f => f.type.startsWith('image/'));
+
+        // Extract images from ZIPs
+        if (zipFiles.length > 0) {
+            setIsLoading(true);
+            for (const zipFile of zipFiles) {
+                const extractedImages = await extractFilesFromZip(zipFile);
+                imageFiles = [...imageFiles, ...extractedImages];
+            }
+        }
+
+        if (imageFiles.length === 0) {
+            setIsLoading(false);
+            return;
+        }
 
         // For small sets, process immediately
         if (imageFiles.length <= 20) {
@@ -155,6 +204,7 @@ export default function ProductCropper() {
                 preview: URL.createObjectURL(file),
             }));
             setFiles(prev => [...prev, ...previews]);
+            setIsLoading(false);
             return;
         }
 
@@ -177,7 +227,8 @@ export default function ProductCropper() {
                 await new Promise(resolve => setTimeout(resolve, 10));
             }
         }
-    }, []);
+        setIsLoading(false);
+    }, [extractFilesFromZip]);
 
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -630,7 +681,7 @@ export default function ProductCropper() {
                 <input
                     type="file"
                     id="crop-input"
-                    accept="image/*"
+                    accept="image/*,.zip"
                     multiple
                     className="hidden"
                     onChange={handleFileSelect}
@@ -648,7 +699,7 @@ export default function ProductCropper() {
                 <p className="title">
                     {files.length > 0 ? `${files.length} zdjęć produktów` : 'Przeciągnij zdjęcia lub folder'}
                 </p>
-                <p className="subtitle" style={{ marginBottom: '1rem' }}>lub wybierz poniżej</p>
+                <p className="subtitle" style={{ marginBottom: '1rem' }}>lub wrzuć archiwum ZIP ze zdjęciami</p>
 
                 <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                     <button

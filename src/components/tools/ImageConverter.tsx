@@ -5,6 +5,7 @@ import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 import { useHistory } from '@/components/History';
 import { useDroppedFile } from '@/components/DroppedFileContext';
 import { useStats } from '@/components/Stats';
+import JSZip from 'jszip';
 
 interface FilePreview {
     file: File;
@@ -34,6 +35,9 @@ export default function ImageConverter() {
     const [namingOption, setNamingOption] = useState<'keep' | 'random'>('keep');
     const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('files');
     const [compareIndex, setCompareIndex] = useState<number | null>(null);
+
+    // ZIP export option
+    const [packAsZip, setPackAsZip] = useState(true);
 
     const { addToHistory } = useHistory();
     const { consumeDroppedFile } = useDroppedFile();
@@ -83,7 +87,92 @@ export default function ImageConverter() {
                 await new Promise(resolve => setTimeout(resolve, 10));
             }
         }
+        setIsLoading(false);
     }, []);
+
+    // Extract images from ZIP file
+    const extractFilesFromZip = useCallback(async (zipFile: File): Promise<File[]> => {
+        try {
+            setLoadingText(`📦 Rozpakowywanie ${zipFile.name}...`);
+            const zip = await JSZip.loadAsync(zipFile);
+            const imageFiles: File[] = [];
+
+            const entries = Object.entries(zip.files);
+            for (let i = 0; i < entries.length; i++) {
+                const [path, zipEntry] = entries[i];
+
+                // Skip directories and hidden files
+                if (zipEntry.dir || path.startsWith('__MACOSX') || path.startsWith('.')) continue;
+
+                // Check if it's an image
+                const ext = path.toLowerCase().split('.').pop();
+                if (!['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif'].includes(ext || '')) continue;
+
+                setLoadingText(`📦 Rozpakowywanie ${i + 1}/${entries.length}...`);
+
+                const blob = await zipEntry.async('blob');
+                const fileName = path.split('/').pop() || path;
+                const file = new File([blob], fileName, { type: `image/${ext === 'jpg' ? 'jpeg' : ext}` });
+                imageFiles.push(file);
+            }
+
+            return imageFiles;
+        } catch (error) {
+            console.error('Error extracting ZIP:', error);
+            return [];
+        }
+    }, []);
+
+    const addFilesWithZip = useCallback(async (newFiles: File[]) => {
+        // Separate ZIP files from regular image files
+        const zipFiles = newFiles.filter(f => f.name.toLowerCase().endsWith('.zip'));
+        let imageFiles = newFiles.filter(f => f.type.startsWith('image/'));
+
+        // Extract images from ZIPs
+        if (zipFiles.length > 0) {
+            setIsLoading(true);
+            for (const zipFile of zipFiles) {
+                const extractedImages = await extractFilesFromZip(zipFile);
+                imageFiles = [...imageFiles, ...extractedImages];
+            }
+        }
+
+        if (imageFiles.length === 0) {
+            setIsLoading(false);
+            return;
+        }
+
+        // For small sets, process immediately
+        if (imageFiles.length <= 20) {
+            const previews = imageFiles.map(file => ({
+                file,
+                preview: URL.createObjectURL(file),
+            }));
+            setFiles(prev => [...prev, ...previews]);
+            setIsLoading(false);
+            return;
+        }
+
+        // For large sets, process in batches to keep UI responsive
+        const BATCH_SIZE = 15;
+
+        for (let i = 0; i < imageFiles.length; i += BATCH_SIZE) {
+            const batch = imageFiles.slice(i, i + BATCH_SIZE);
+            const previews = batch.map(file => ({
+                file,
+                preview: URL.createObjectURL(file),
+            }));
+
+            setFiles(prev => [...prev, ...previews]);
+            setLoadingText(`📸 Ładowanie ${Math.min(i + BATCH_SIZE, imageFiles.length)}/${imageFiles.length} plików...`);
+
+            // Yield to event loop to allow UI updates
+            if (i + BATCH_SIZE < imageFiles.length) {
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+        }
+        setIsLoading(false);
+    }, [extractFilesFromZip]);
 
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -106,7 +195,7 @@ export default function ImageConverter() {
             setLoadingText(`📸 Tworzenie podglądów (${allFiles.length} plików)...`);
 
             setTimeout(() => {
-                addFiles(allFiles);
+                addFilesWithZip(allFiles);
                 setIsLoading(false);
             }, 50);
         });
@@ -147,7 +236,7 @@ export default function ImageConverter() {
                 setLoadingText(`📸 Tworzenie podglądów...`);
                 requestAnimationFrame(() => {
                     setTimeout(() => {
-                        addFiles(selectedFiles);
+                        addFilesWithZip(selectedFiles);
                         setIsLoading(false);
                     }, 50);
                 });
@@ -167,7 +256,7 @@ export default function ImageConverter() {
                 setLoadingText(`📸 Tworzenie podglądów...`);
                 requestAnimationFrame(() => {
                     setTimeout(() => {
-                        addFiles(selectedFiles);
+                        addFilesWithZip(selectedFiles);
                         setIsLoading(false);
                     }, 50);
                 });
@@ -264,13 +353,64 @@ export default function ImageConverter() {
         });
     };
 
-    const downloadAll = () => {
-        converted.forEach(img => {
+    const downloadAll = async () => {
+        if (converted.length === 0) return;
+
+        // If only 1 file OR ZIP mode is off, download individually
+        if (converted.length === 1 || !packAsZip) {
+            converted.forEach(img => {
+                const a = document.createElement('a');
+                a.href = img.url;
+                a.download = img.name;
+                a.click();
+            });
+            return;
+        }
+
+        // Create ZIP for multiple files
+        setIsLoading(true);
+        setLoadingText('📦 Pakowanie do ZIP...');
+
+        try {
+            const zip = new JSZip();
+
+            // Add each converted image to the ZIP
+            for (let i = 0; i < converted.length; i++) {
+                const img = converted[i];
+                setLoadingText(`📦 Pakowanie ${i + 1}/${converted.length}...`);
+
+                // Fetch blob from URL
+                const response = await fetch(img.url);
+                const blob = await response.blob();
+
+                zip.file(img.name, blob);
+            }
+
+            setLoadingText('📦 Generowanie archiwum ZIP...');
+
+            // Generate ZIP and download
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const zipUrl = URL.createObjectURL(zipBlob);
+
             const a = document.createElement('a');
-            a.href = img.url;
-            a.download = img.name;
+            a.href = zipUrl;
+            a.download = `konwersja_${new Date().toISOString().slice(0, 10)}.zip`;
             a.click();
-        });
+
+            URL.revokeObjectURL(zipUrl);
+        } catch (error) {
+            console.error('Error creating ZIP:', error);
+            // Fallback to individual downloads
+            converted.forEach(img => {
+                const a = document.createElement('a');
+                a.href = img.url;
+                a.download = img.name;
+                a.click();
+            });
+        } finally {
+            setIsLoading(false);
+            setLoadingText('');
+        }
     };
 
     const formatBytes = (bytes: number) => {
@@ -320,7 +460,7 @@ export default function ImageConverter() {
                 <input
                     type="file"
                     id="img-input"
-                    accept="image/*"
+                    accept="image/*,.zip"
                     multiple
                     className="hidden"
                     onChange={handleFileSelect}
@@ -470,7 +610,7 @@ export default function ImageConverter() {
             )}
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                     onClick={convertImages}
                     disabled={files.length === 0 || isProcessing}
@@ -479,9 +619,29 @@ export default function ImageConverter() {
                     {isProcessing ? `⏳ ${progress}%` : '🔄 Konwertuj'}
                 </button>
                 {converted.length > 0 && (
-                    <button onClick={downloadAll} className="btn btn-secondary">
-                        ⬇️ Pobierz wszystkie ({converted.length})
-                    </button>
+                    <>
+                        <button onClick={downloadAll} className="btn btn-secondary" disabled={isLoading}>
+                            {packAsZip && converted.length > 1 ? '📦 Pobierz ZIP' : '⬇️ Pobierz'} ({converted.length})
+                        </button>
+                        {converted.length > 1 && (
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontSize: '0.85rem',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={packAsZip}
+                                    onChange={(e) => setPackAsZip(e.target.checked)}
+                                    style={{ accentColor: 'var(--accent)' }}
+                                />
+                                Pakuj do ZIP
+                            </label>
+                        )}
+                    </>
                 )}
             </div>
 
