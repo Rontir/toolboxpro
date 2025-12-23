@@ -10,7 +10,7 @@ from datetime import datetime
 import shutil
 import json
 from typing import List, Dict
-from backend_processor import process_perfume_data, EanChecker, StructureMatcher, PikoEmpiko, PikoEmpikoLocal
+# from backend_processor import process_perfume_data, EanChecker, StructureMatcher, PikoEmpiko, PikoEmpikoLocal
 
 app = FastAPI(title="ToolBox Pro API")
 
@@ -119,6 +119,9 @@ async def process_perfumes(
         beauty_content = await dict_beauty.read()
         kompozycje_content = await dict_kompozycje.read()
         
+        # Lazy import
+        from backend_processor import process_perfume_data
+        
         # Process data
         main_excel, missing_excel, verify_excel, report_text = process_perfume_data(
             source_content,
@@ -163,6 +166,7 @@ async def check_ean(
         content = await file.read()
         search_cols = json.loads(col_search)
         
+        from backend_processor import EanChecker
         output_io = EanChecker.process(content, search_cols, col_main)
         
         return StreamingResponse(
@@ -183,6 +187,7 @@ async def match_structure(
         batch_content = await batch_file.read()
         base_content = await base_file.read()
         
+        from backend_processor import StructureMatcher
         output_io = StructureMatcher.process(batch_content, base_content, path_col_idx)
         
         return StreamingResponse(
@@ -231,6 +236,7 @@ async def piko_empiko(
         
         def process_task(jid, content, idx, main, extra, options):
             try:
+                from backend_processor import PikoEmpiko
                 output_io = PikoEmpiko.process_safe(
                     content, idx, main, extra, 
                     progress_callback=lambda c, t: update_progress(jid, c, t),
@@ -280,6 +286,7 @@ async def piko_local(
         
         def process_task(jid, mode, folder, content, opts):
             try:
+                from backend_processor import PikoEmpikoLocal
                 result = PikoEmpikoLocal.process_request(
                     mode, folder, content, opts,
                     progress_callback=lambda pct: update_progress(jid, pct, 100)
