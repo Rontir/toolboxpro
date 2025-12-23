@@ -3,6 +3,12 @@
 import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { useExcelWorker } from '@/hooks/useExcelWorker';
+import { useStats } from '../Stats';
+import { useHistory } from '../History';
+import { useNotifications } from '../Notifications';
+import { ToolHeader } from '../ui/ToolHeader';
+import { FileUpload } from '../ui/FileUpload';
+import { Section } from '../ui/Section';
 
 interface CompareResult {
     onlyInA: number;
@@ -40,6 +46,11 @@ export default function ExcelCompare() {
 
     // Web Worker for Excel parsing
     const { parseExcel } = useExcelWorker();
+
+    // Core hooks
+    const { recordUsage } = useStats();
+    const { addToHistory } = useHistory();
+    const { addNotification } = useNotifications();
 
     const loadFile = async (file: File): Promise<{ headers: string[], rows: Record<string, unknown>[] }> => {
         const data = await file.arrayBuffer();
@@ -86,6 +97,14 @@ export default function ExcelCompare() {
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const onFileASelect = (files: File[]) => {
+        if (files.length > 0) handleFileA(files[0]);
+    };
+
+    const onFileBSelect = (files: File[]) => {
+        if (files.length > 0) handleFileB(files[0]);
     };
 
     const compare = async () => {
@@ -187,6 +206,23 @@ export default function ExcelCompare() {
             setDiffs(diffRows);
             setProgress(100);
 
+            recordUsage('compare', diffRows.length);
+            addNotification('success', 'Porównanie zakończone', `Znaleziono ${different} różnic i ${onlyInA + onlyInB} brakujących.`);
+            addToHistory({
+                tool: 'Porównywarka',
+                toolIcon: '🔀',
+                inputFiles: [fileA.name, fileB.name],
+                outputFileName: 'porownanie.xlsx',
+                outputBlob: blob,
+                summary: `${different} różnic, ${onlyInA} tylko w A, ${onlyInB} tylko w B`,
+                stats: {
+                    'Różnice': different,
+                    'Tylko w A': onlyInA,
+                    'Tylko w B': onlyInB,
+                    'Identyczne': identical
+                }
+            });
+
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Nieznany błąd');
         } finally {
@@ -223,167 +259,126 @@ export default function ExcelCompare() {
     );
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'relative' }}>
+        <div className="flex flex-col gap-6">
+            <ToolHeader
+                title="Porównywarka Excel"
+                description="Porównaj dwa pliki Excel i znajdź różnice w danych. Idealne do sprawdzania zmian w cennikach lub stanach magazynowych."
+                icon="🔀"
+            />
+
             {/* Loading Overlay */}
             {isLoading && (
                 <div className="upload-progress-overlay">
-                    <div className="spinner"></div>
-                    <p>{loadingText}</p>
+                    <div className="upload-progress-spinner" />
+                    <p className="text-white text-lg mt-5">{loadingText}</p>
                 </div>
             )}
 
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                Porównaj dwa pliki Excel i znajdź różnice
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                {/* Left - File A */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div
-                        className="upload-zone"
-                        onClick={() => document.getElementById('file-a')?.click()}
-                        style={{ borderColor: fileA ? 'var(--accent)' : undefined }}
-                    >
-                        <input
-                            id="file-a"
-                            type="file"
-                            accept=".xlsx,.xls"
-                            style={{ display: 'none' }}
-                            onChange={e => e.target.files?.[0] && handleFileA(e.target.files[0])}
-                        />
-                        <span className="icon">{fileA ? '📊' : '📁'}</span>
-                        <p className="title">{fileA?.name || 'Plik A (bazowy)'}</p>
-                        <p className="subtitle">Pierwszy plik do porównania</p>
-                    </div>
-
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* File A */}
+                <Section title="1. Plik bazowy (A)">
+                    <FileUpload
+                        onFilesSelect={onFileASelect}
+                        accept=".xlsx,.xls"
+                        label="Wgraj plik bazowy"
+                        sublabel="Pierwszy plik do porównania"
+                        icon="📊"
+                        isLoading={isLoading}
+                        loadingText={loadingText}
+                    />
                     {columnsA.length > 0 && (
-                        <div className="card">
-                            <div className="card-header">🔑 Kolumna klucza (A)</div>
-                            <div className="card-body">
-                                <select
-                                    value={keyColumnA}
-                                    onChange={e => setKeyColumnA(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '0.5rem',
-                                        background: 'var(--bg-tertiary)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '6px',
-                                        color: 'var(--text-white)',
-                                        fontSize: '0.85rem'
-                                    }}
-                                >
-                                    {columnsA.map(col => (
-                                        <option key={col} value={col}>{col}</option>
-                                    ))}
-                                </select>
-                            </div>
+                        <div className="mt-4">
+                            <p className="text-sm font-medium text-text-gray mb-2">Klucz porównania (A):</p>
+                            <select
+                                value={keyColumnA}
+                                onChange={e => setKeyColumnA(e.target.value)}
+                                className="w-full p-2 bg-bg-input border border-border rounded-lg text-sm text-text-white focus:outline-none focus:border-accent transition-colors"
+                            >
+                                {columnsA.map(col => (
+                                    <option key={col} value={col}>{col}</option>
+                                ))}
+                            </select>
                         </div>
                     )}
-                </div>
+                </Section>
 
-                {/* Right - File B */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div
-                        className="upload-zone"
-                        onClick={() => document.getElementById('file-b')?.click()}
-                        style={{ borderColor: fileB ? '#60a5fa' : undefined }}
-                    >
-                        <input
-                            id="file-b"
-                            type="file"
-                            accept=".xlsx,.xls"
-                            style={{ display: 'none' }}
-                            onChange={e => e.target.files?.[0] && handleFileB(e.target.files[0])}
-                        />
-                        <span className="icon">{fileB ? '📊' : '📁'}</span>
-                        <p className="title">{fileB?.name || 'Plik B (nowy)'}</p>
-                        <p className="subtitle">Drugi plik do porównania</p>
-                    </div>
-
+                {/* File B */}
+                <Section title="2. Plik nowy (B)">
+                    <FileUpload
+                        onFilesSelect={onFileBSelect}
+                        accept=".xlsx,.xls"
+                        label="Wgraj plik nowy"
+                        sublabel="Drugi plik do porównania"
+                        icon="📊"
+                        isLoading={isLoading}
+                        loadingText={loadingText}
+                    />
                     {columnsB.length > 0 && (
-                        <div className="card">
-                            <div className="card-header">🔑 Kolumna klucza (B)</div>
-                            <div className="card-body">
-                                <select
-                                    value={keyColumnB}
-                                    onChange={e => setKeyColumnB(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '0.5rem',
-                                        background: 'var(--bg-tertiary)',
-                                        border: '1px solid var(--border)',
-                                        borderRadius: '6px',
-                                        color: 'var(--text-white)',
-                                        fontSize: '0.85rem'
-                                    }}
-                                >
-                                    {columnsB.map(col => (
-                                        <option key={col} value={col}>{col}</option>
-                                    ))}
-                                </select>
-                            </div>
+                        <div className="mt-4">
+                            <p className="text-sm font-medium text-text-gray mb-2">Klucz porównania (B):</p>
+                            <select
+                                value={keyColumnB}
+                                onChange={e => setKeyColumnB(e.target.value)}
+                                className="w-full p-2 bg-bg-input border border-border rounded-lg text-sm text-text-white focus:outline-none focus:border-accent transition-colors"
+                            >
+                                {columnsB.map(col => (
+                                    <option key={col} value={col}>{col}</option>
+                                ))}
+                            </select>
                         </div>
                     )}
-                </div>
+                </Section>
             </div>
 
-            {/* Compare Button */}
-            <button
-                className="btn btn-primary"
-                onClick={result ? downloadResult : compare}
-                disabled={!fileA || !fileB || !keyColumnA || !keyColumnB || isProcessing}
-                style={{ width: '100%' }}
-            >
-                {isProcessing ? '⏳ Porównywanie...' : result ? '📥 Pobierz raport' : '🔍 Porównaj pliki'}
-            </button>
-
-            {result && (
-                <button className="btn btn-secondary" onClick={reset} style={{ width: '100%' }}>
-                    🔄 Nowe porównanie
+            {/* Actions */}
+            <div className="flex gap-3">
+                <button
+                    className="btn btn-primary flex-1 py-4 text-lg"
+                    onClick={result ? downloadResult : compare}
+                    disabled={!fileA || !fileB || !keyColumnA || !keyColumnB || isProcessing}
+                >
+                    {isProcessing ? `⏳ Porównywanie... ${progress}%` : result ? '📥 Pobierz wynik' : '🔍 Porównaj pliki'}
                 </button>
-            )}
+
+                {result && (
+                    <button className="btn btn-secondary w-32" onClick={reset}>
+                        🔄 Reset
+                    </button>
+                )}
+            </div>
 
             {/* Results */}
             {result && (
-                <>
-                    {/* Stats */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-                        <div className="card" style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#fbbf24' }}>{result.onlyInA}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tylko w A</div>
+                <Section title="✅ Wynik porównania">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div className="p-4 bg-bg-card rounded-lg border border-border text-center">
+                            <div className="text-2xl font-bold text-yellow-500">{result.onlyInA}</div>
+                            <div className="text-xs text-text-muted mt-1">Tylko w A</div>
                         </div>
-                        <div className="card" style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#60a5fa' }}>{result.onlyInB}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tylko w B</div>
+                        <div className="p-4 bg-bg-card rounded-lg border border-border text-center">
+                            <div className="text-2xl font-bold text-blue-500">{result.onlyInB}</div>
+                            <div className="text-xs text-text-muted mt-1">Tylko w B</div>
                         </div>
-                        <div className="card" style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f87171' }}>{result.different}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Różnice</div>
+                        <div className="p-4 bg-bg-card rounded-lg border border-border text-center">
+                            <div className="text-2xl font-bold text-red-500">{result.different}</div>
+                            <div className="text-xs text-text-muted mt-1">Różnice</div>
                         </div>
-                        <div className="card" style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>{result.identical}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Identyczne</div>
+                        <div className="p-4 bg-bg-card rounded-lg border border-border text-center">
+                            <div className="text-2xl font-bold text-green-500">{result.identical}</div>
+                            <div className="text-xs text-text-muted mt-1">Identyczne</div>
                         </div>
                     </div>
 
                     {/* Filter */}
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
                         {(['all', 'only_a', 'only_b', 'different'] as const).map(f => (
                             <button
                                 key={f}
                                 onClick={() => setShowFilter(f)}
-                                style={{
-                                    flex: 1,
-                                    padding: '0.5rem',
-                                    background: showFilter === f ? 'var(--accent)' : 'var(--bg-tertiary)',
-                                    color: showFilter === f ? 'black' : 'var(--text-muted)',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.8rem',
-                                    fontWeight: showFilter === f ? 700 : 500
-                                }}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${showFilter === f
+                                        ? 'bg-accent text-white'
+                                        : 'bg-bg-tertiary text-text-gray hover:bg-bg-tertiary/80'
+                                    }`}
                             >
                                 {f === 'all' ? 'Wszystkie' : f === 'only_a' ? 'Tylko A' : f === 'only_b' ? 'Tylko B' : 'Różnice'}
                             </button>
@@ -391,56 +386,37 @@ export default function ExcelCompare() {
                     </div>
 
                     {/* Diff List */}
-                    <div className="card" style={{ maxHeight: '300px', overflow: 'auto' }}>
-                        <div className="card-header">📋 Szczegóły ({filteredDiffs.length})</div>
-                        <div className="card-body" style={{ padding: 0 }}>
+                    <div className="max-h-96 overflow-y-auto bg-bg-input rounded-lg border border-border">
+                        <div className="p-3 border-b border-border bg-bg-tertiary text-xs font-bold text-text-gray uppercase sticky top-0">
+                            Szczegóły ({filteredDiffs.length})
+                        </div>
+                        <div className="divide-y divide-border">
                             {filteredDiffs.slice(0, 100).map((d, i) => (
-                                <div
-                                    key={i}
-                                    style={{
-                                        padding: '0.5rem 1rem',
-                                        borderBottom: '1px solid var(--border)',
-                                        fontSize: '0.8rem',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '0.75rem'
-                                    }}
-                                >
-                                    <span style={{
-                                        width: '8px',
-                                        height: '8px',
-                                        borderRadius: '50%',
-                                        background: d.status === 'only_a' ? '#fbbf24' :
-                                            d.status === 'only_b' ? '#60a5fa' :
-                                                d.status === 'different' ? '#f87171' : 'var(--accent)'
-                                    }} />
-                                    <span style={{ fontWeight: 600 }}>{d.key}</span>
+                                <div key={i} className="p-3 text-sm flex items-center gap-3 hover:bg-bg-tertiary/50 transition-colors">
+                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${d.status === 'only_a' ? 'bg-yellow-500' :
+                                            d.status === 'only_b' ? 'bg-blue-500' :
+                                                d.status === 'different' ? 'bg-red-500' : 'bg-green-500'
+                                        }`} />
+                                    <span className="font-medium text-text-white">{d.key}</span>
                                     {d.differences && (
-                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                                        <span className="text-text-muted text-xs">
                                             ({d.differences.join(', ')})
                                         </span>
                                     )}
                                 </div>
                             ))}
                             {filteredDiffs.length > 100 && (
-                                <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                <div className="p-4 text-center text-text-muted text-sm">
                                     ...i {filteredDiffs.length - 100} więcej (zobacz w raporcie)
                                 </div>
                             )}
                         </div>
                     </div>
-                </>
+                </Section>
             )}
 
             {error && (
-                <div style={{
-                    padding: '0.75rem 1rem',
-                    background: 'rgba(248, 113, 113, 0.1)',
-                    border: '1px solid var(--error)',
-                    borderRadius: '8px',
-                    color: 'var(--error)',
-                    fontSize: '0.85rem'
-                }}>
+                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2">
                     ❌ {error}
                 </div>
             )}

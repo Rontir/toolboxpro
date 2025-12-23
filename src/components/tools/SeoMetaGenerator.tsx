@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useStats } from '../Stats';
 
 interface ProductData {
     name: string;
@@ -23,6 +24,10 @@ export default function SeoMetaGenerator() {
         imageUrl: '',
     });
     const [copied, setCopied] = useState<string | null>(null);
+
+    // Stats tracking
+    const { recordUsage } = useStats();
+    const hasTrackedRef = useRef(false);
 
     const updateField = (field: keyof ProductData, value: string) => {
         setProduct(prev => ({ ...prev, [field]: value }));

@@ -2,6 +2,9 @@
 
 import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import { ToolHeader } from '../ui/ToolHeader';
+import { FileUpload } from '../ui/FileUpload';
+import { Section } from '../ui/Section';
 
 interface ConversionResult {
     inputColumn: string;
@@ -21,9 +24,8 @@ export default function JsonToHtml() {
 
     const addLog = (msg: string) => setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        const f = Array.from(e.dataTransfer.files).find(f => f.name.match(/\.xlsx?$/i));
+    const handleFilesSelected = useCallback((files: File[]) => {
+        const f = files.find(f => f.name.match(/\.xlsx?$/i));
         if (f) setFile(f);
     }, []);
 
@@ -202,131 +204,113 @@ export default function JsonToHtml() {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {/* Description */}
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                Konwertuje kolumny JSON (Opis) na HTML w pliku Excel
-            </p>
+        <div className="flex flex-col gap-6">
+            <ToolHeader
+                title="JSON to HTML Converter"
+                description="Konwertuje kolumny JSON (Opis) na HTML w pliku Excel. Automatycznie wykrywa kolumny i generuje poprawiony plik."
+                icon="📝"
+            />
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left Column */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {/* Upload Zone */}
-                    <div
-                        className="upload-zone"
-                        onDragOver={e => e.preventDefault()}
-                        onDrop={handleDrop}
-                        onClick={() => document.getElementById('json-file')?.click()}
-                    >
-                        <input
-                            id="json-file"
-                            type="file"
+                <div className="space-y-6">
+                    <Section title="1. Wgraj plik">
+                        <FileUpload
+                            onFilesSelect={handleFilesSelected}
                             accept=".xlsx,.xls"
-                            style={{ display: 'none' }}
-                            onChange={e => e.target.files?.[0] && setFile(e.target.files[0])}
+                            label="Wgraj plik Excel"
+                            sublabel="Wymagane kolumny zaczynające się od 'Opis'"
+                            icon="📥"
+                            isLoading={isProcessing}
+                            loadingText={isProcessing ? `Przetwarzanie... ${progress}%` : ''}
                         />
-                        <span className="icon">{file ? '✅' : '📥'}</span>
-                        <p className="title">{file?.name || 'Przeciągnij plik Excel'}</p>
-                        <p className="subtitle">
-                            {file ? `${(file.size / 1024).toFixed(1)} KB` : 'Z kolumnami "Opis..."'}
-                        </p>
-                    </div>
+                        {file && (
+                            <div className="mt-4 p-4 bg-bg-tertiary rounded-lg border border-border flex items-center justify-between">
+                                <span className="text-text-white font-medium">{file.name}</span>
+                                <span className="text-xs text-text-muted">{(file.size / 1024).toFixed(1)} KB</span>
+                            </div>
+                        )}
+                    </Section>
 
-                    {/* Info Card */}
-                    <div className="card">
-                        <div className="card-header">📋 Jak to działa</div>
-                        <div className="card-body" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                            <ol style={{ paddingLeft: '1rem', margin: 0 }}>
-                                <li>Szuka kolumn zaczynających się od <strong>"Opis"</strong></li>
-                                <li>Konwertuje JSON → HTML dla każdej komórki</li>
-                                <li>Tworzy nowe kolumny <strong>"Poprawiony opis..."</strong></li>
-                                <li>Zapisuje wynik do nowego pliku Excel</li>
-                            </ol>
+                    <Section title="2. Akcje">
+                        <div className="space-y-3">
+                            <button
+                                className="btn btn-primary w-full py-3"
+                                onClick={outputBlob ? downloadResult : processFile}
+                                disabled={!file || isProcessing}
+                            >
+                                {isProcessing ? '⏳ Przetwarzanie...' : outputBlob ? '📥 Pobierz wynik' : '🚀 Konwertuj'}
+                            </button>
+
+                            {outputBlob && (
+                                <button className="btn btn-secondary w-full" onClick={reset}>
+                                    🔄 Nowy plik
+                                </button>
+                            )}
                         </div>
-                    </div>
+                    </Section>
 
-                    {/* Process Button */}
-                    <button
-                        className="btn btn-primary"
-                        onClick={outputBlob ? downloadResult : processFile}
-                        disabled={!file || isProcessing}
-                        style={{ width: '100%' }}
-                    >
-                        {isProcessing ? '⏳ Przetwarzanie...' : outputBlob ? '📥 Pobierz wynik' : '🚀 Konwertuj'}
-                    </button>
-
-                    {outputBlob && (
-                        <button className="btn btn-secondary" onClick={reset} style={{ width: '100%' }}>
-                            🔄 Nowy plik
-                        </button>
-                    )}
+                    <Section title="ℹ️ Jak to działa">
+                        <ol className="list-decimal list-inside space-y-2 text-sm text-text-muted">
+                            <li>Szuka kolumn zaczynających się od <strong className="text-text-white">"Opis"</strong></li>
+                            <li>Konwertuje JSON → HTML dla każdej komórki</li>
+                            <li>Tworzy nowe kolumny <strong className="text-text-white">"Poprawiony opis..."</strong></li>
+                            <li>Zapisuje wynik do nowego pliku Excel</li>
+                        </ol>
+                    </Section>
                 </div>
 
                 {/* Right Column */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {/* Progress Card */}
-                    <div className="card">
-                        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span>📊 Status</span>
-                            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--accent)' }}>{progress}%</span>
-                        </div>
-                        <div className="card-body">
-                            <div className="progress-bar">
-                                <div className="progress-fill" style={{ width: `${progress}%` }} />
+                <div className="space-y-6">
+                    <Section title="Status i Logi">
+                        {/* Progress */}
+                        <div className="mb-6">
+                            <div className="flex justify-between mb-2 text-sm">
+                                <span className="text-text-gray">Postęp</span>
+                                <span className="font-bold text-accent">{progress}%</span>
+                            </div>
+                            <div className="w-full bg-bg-input rounded-full h-2.5">
+                                <div className="bg-accent h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Results */}
+                        {/* Logs */}
+                        <div className="bg-bg-input rounded-lg border border-border p-4 h-48 overflow-y-auto font-mono text-xs space-y-1">
+                            {logs.length > 0 ? logs.map((log, i) => (
+                                <div key={i} className={`${log.includes('✅') ? 'text-green-400' : log.includes('❌') ? 'text-red-400' : 'text-text-muted'}`}>
+                                    {log}
+                                </div>
+                            )) : (
+                                <div className="text-text-muted opacity-50 italic">Oczekiwanie na rozpoczęcie...</div>
+                            )}
+                        </div>
+
+                        {/* Error */}
+                        {error && (
+                            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+                                ❌ {error}
+                            </div>
+                        )}
+                    </Section>
+
                     {results.length > 0 && (
-                        <div className="card">
-                            <div className="card-header">✅ Wyniki konwersji</div>
-                            <div className="card-body" style={{ fontSize: '0.8rem' }}>
+                        <Section title="Wyniki konwersji">
+                            <div className="space-y-2">
                                 {results.map((r, i) => (
-                                    <div key={i} style={{
-                                        padding: '0.5rem',
-                                        background: 'var(--bg-tertiary)',
-                                        borderRadius: '6px',
-                                        marginBottom: i < results.length - 1 ? '0.5rem' : 0
-                                    }}>
-                                        <div style={{ fontWeight: 600, color: 'var(--accent)' }}>
+                                    <div key={i} className="p-3 bg-bg-tertiary rounded-lg border border-border">
+                                        <div className="font-medium text-accent text-sm mb-1">
                                             {r.inputColumn} → {r.outputColumn}
                                         </div>
-                                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                                            {r.rowsProcessed} wierszy | {r.errors > 0 ? `${r.errors} błędów` : 'Bez błędów'}
+                                        <div className="text-xs text-text-muted flex justify-between">
+                                            <span>Przetworzono: {r.rowsProcessed}</span>
+                                            <span className={r.errors > 0 ? 'text-red-400' : 'text-green-400'}>
+                                                {r.errors > 0 ? `${r.errors} błędów` : 'Bez błędów'}
+                                            </span>
                                         </div>
                                     </div>
                                 ))}
                             </div>
-                        </div>
-                    )}
-
-                    {/* Log */}
-                    <div className="card" style={{ flex: 1 }}>
-                        <div className="card-header">📋 Log</div>
-                        <div className="card-body" style={{ maxHeight: '150px', overflowY: 'auto', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                            {logs.length > 0 ? logs.map((log, i) => (
-                                <div key={i} style={{ padding: '0.15rem 0', color: log.includes('✅') ? 'var(--accent)' : log.includes('❌') ? 'var(--error)' : 'var(--text-muted)' }}>
-                                    {log}
-                                </div>
-                            )) : (
-                                <div style={{ color: 'var(--text-muted)' }}>Gotowy do pracy.</div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Error */}
-                    {error && (
-                        <div style={{
-                            padding: '0.75rem 1rem',
-                            background: 'rgba(248, 113, 113, 0.1)',
-                            border: '1px solid var(--error)',
-                            borderRadius: '8px',
-                            color: 'var(--error)',
-                            fontSize: '0.85rem'
-                        }}>
-                            ❌ {error}
-                        </div>
+                        </Section>
                     )}
                 </div>
             </div>

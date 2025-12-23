@@ -11,6 +11,7 @@ interface StatsData {
     toolUsage: ToolUsage;
     totalOperations: number;
     lastUsed: string | null;
+    dailyUsage: Record<string, number>; // date string (YYYY-MM-DD) -> count
 }
 
 interface StatsContextType {
@@ -28,6 +29,7 @@ const DEFAULT_STATS: StatsData = {
     toolUsage: {},
     totalOperations: 0,
     lastUsed: null,
+    dailyUsage: {},
 };
 
 export function StatsProvider({ children }: { children: ReactNode }) {
@@ -59,6 +61,7 @@ export function StatsProvider({ children }: { children: ReactNode }) {
     }, [stats, isLoaded]);
 
     const recordUsage = (toolId: string, filesCount = 1) => {
+        const today = new Date().toISOString().split('T')[0];
         setStats(prev => ({
             filesProcessed: prev.filesProcessed + filesCount,
             toolUsage: {
@@ -67,6 +70,10 @@ export function StatsProvider({ children }: { children: ReactNode }) {
             },
             totalOperations: prev.totalOperations + 1,
             lastUsed: toolId,
+            dailyUsage: {
+                ...prev.dailyUsage,
+                [today]: (prev.dailyUsage[today] || 0) + 1,
+            }
         }));
     };
 
@@ -191,6 +198,58 @@ export function StatsPanel({ isOpen, onClose, tools }: StatsPanelProps) {
                             <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
                                 Operacji wykonanych
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Heatmap Section */}
+                    <div style={{ marginBottom: '2rem' }}>
+                        <h3 style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                            📅 Aktywność (ostatnie 4 tygodnie)
+                        </h3>
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(7, 1fr)',
+                            gap: '4px',
+                            background: 'var(--bg-tertiary)',
+                            padding: '12px',
+                            borderRadius: '12px',
+                        }}>
+                            {Array.from({ length: 28 }).map((_, i) => {
+                                const date = new Date();
+                                date.setDate(date.getDate() - (27 - i));
+                                const dateStr = date.toISOString().split('T')[0];
+                                const count = stats.dailyUsage[dateStr] || 0;
+
+                                // Calculate color based on count
+                                let opacity = 0.1;
+                                if (count > 0) opacity = 0.3;
+                                if (count > 5) opacity = 0.6;
+                                if (count > 10) opacity = 1;
+
+                                return (
+                                    <div
+                                        key={dateStr}
+                                        title={`${dateStr}: ${count} operacji`}
+                                        style={{
+                                            aspectRatio: '1/1',
+                                            background: 'var(--accent)',
+                                            borderRadius: '2px',
+                                            opacity: opacity,
+                                            transition: 'all 0.2s',
+                                        }}
+                                    />
+                                );
+                            })}
+                        </div>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginTop: '8px',
+                            fontSize: '0.7rem',
+                            color: 'var(--text-muted)',
+                        }}>
+                            <span>4 tyg. temu</span>
+                            <span>Dzisiaj</span>
                         </div>
                     </div>
 

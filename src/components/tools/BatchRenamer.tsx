@@ -1,6 +1,13 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useStats } from '../Stats';
+import { useHistory } from '../History';
+import { useNotifications } from '../Notifications';
+import { useUndoRedo, useUndoRedoKeyboard, UndoRedoButtons } from '@/hooks/useUndoRedo';
+import { ToolHeader } from '../ui/ToolHeader';
+import { FileUpload } from '../ui/FileUpload';
+import { Section } from '../ui/Section';
 
 interface FileToRename {
     originalName: string;
@@ -10,40 +17,57 @@ interface FileToRename {
 
 type RenameMode = 'prefix' | 'suffix' | 'replace' | 'sequence' | 'regex';
 
+interface Settings {
+    mode: RenameMode;
+    prefixValue: string;
+    suffixValue: string;
+    findValue: string;
+    replaceValue: string;
+    sequenceStart: number;
+    sequencePadding: number;
+    sequencePattern: string;
+    regexPattern: string;
+    regexReplace: string;
+}
+
+const DEFAULT_SETTINGS: Settings = {
+    mode: 'prefix',
+    prefixValue: '',
+    suffixValue: '',
+    findValue: '',
+    replaceValue: '',
+    sequenceStart: 1,
+    sequencePadding: 3,
+    sequencePattern: 'file_###',
+    regexPattern: '',
+    regexReplace: '',
+};
+
 export default function BatchRenamer() {
     const [files, setFiles] = useState<FileToRename[]>([]);
-    const [mode, setMode] = useState<RenameMode>('prefix');
-    const [prefixValue, setPrefixValue] = useState('');
-    const [suffixValue, setSuffixValue] = useState('');
-    const [findValue, setFindValue] = useState('');
-    const [replaceValue, setReplaceValue] = useState('');
-    const [sequenceStart, setSequenceStart] = useState(1);
-    const [sequencePadding, setSequencePadding] = useState(3);
-    const [sequencePattern, setSequencePattern] = useState('file_###');
-    const [regexPattern, setRegexPattern] = useState('');
-    const [regexReplace, setRegexReplace] = useState('');
+
+    const {
+        state: settings,
+        setState: setSettings,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
+        undoCount,
+        redoCount
+    } = useUndoRedo<Settings>(DEFAULT_SETTINGS);
+
+    useUndoRedoKeyboard(undo, redo);
+
     const [isProcessing, setIsProcessing] = useState(false);
-    const [isDragging, setIsDragging] = useState(false);
 
-    const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFiles = e.target.files;
-        if (!selectedFiles) return;
+    // Core hooks
+    const { recordUsage } = useStats();
+    const { addToHistory } = useHistory();
+    const { addNotification } = useNotifications();
 
-        const newFiles: FileToRename[] = Array.from(selectedFiles).map(file => ({
-            originalName: file.name,
-            newName: file.name,
-            file
-        }));
-        setFiles(prev => [...prev, ...newFiles]);
-    }, []);
-
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        setIsDragging(false);
-        const droppedFiles = e.dataTransfer.files;
-        if (!droppedFiles.length) return;
-
-        const newFiles: FileToRename[] = Array.from(droppedFiles).map(file => ({
+    const handleFilesSelected = useCallback((selectedFiles: File[]) => {
+        const newFiles: FileToRename[] = selectedFiles.map(file => ({
             originalName: file.name,
             newName: file.name,
             file
@@ -52,29 +76,29 @@ export default function BatchRenamer() {
     }, []);
 
     const applyRename = useCallback(() => {
-        setFiles(prev => prev.map((file, index) => {
+        setFiles((prev: FileToRename[]) => prev.map((file: FileToRename, index: number) => {
             let newName = file.originalName;
             const ext = newName.includes('.') ? '.' + newName.split('.').pop() : '';
             const baseName = newName.replace(ext, '');
 
-            switch (mode) {
+            switch (settings.mode) {
                 case 'prefix':
-                    newName = prefixValue + newName;
+                    newName = settings.prefixValue + newName;
                     break;
                 case 'suffix':
-                    newName = baseName + suffixValue + ext;
+                    newName = baseName + settings.suffixValue + ext;
                     break;
                 case 'replace':
-                    newName = newName.replaceAll(findValue, replaceValue);
+                    newName = newName.replaceAll(settings.findValue, settings.replaceValue);
                     break;
                 case 'sequence':
-                    const num = (sequenceStart + index).toString().padStart(sequencePadding, '0');
-                    newName = sequencePattern.replace(/#+/g, num) + ext;
+                    const num = (settings.sequenceStart + index).toString().padStart(settings.sequencePadding, '0');
+                    newName = settings.sequencePattern.replace(/#+/g, num) + ext;
                     break;
                 case 'regex':
                     try {
-                        const regex = new RegExp(regexPattern, 'g');
-                        newName = newName.replace(regex, regexReplace);
+                        const regex = new RegExp(settings.regexPattern, 'g');
+                        newName = newName.replace(regex, settings.regexReplace);
                     } catch {
                         // Invalid regex, skip
                     }
@@ -83,7 +107,7 @@ export default function BatchRenamer() {
 
             return { ...file, newName };
         }));
-    }, [mode, prefixValue, suffixValue, findValue, replaceValue, sequenceStart, sequencePadding, sequencePattern, regexPattern, regexReplace]);
+    }, [settings]);
 
     const downloadRenamed = useCallback(async () => {
         if (files.length === 0) return;
@@ -105,6 +129,17 @@ export default function BatchRenamer() {
             a.download = 'renamed_files.zip';
             a.click();
             URL.revokeObjectURL(url);
+            recordUsage('batch-renamer', files.length);
+            addNotification('success', 'Zmiana nazw zakończona', `Pomyślnie zmieniono nazwy ${files.length} plików.`);
+            addToHistory({
+                tool: 'Batch Renamer',
+                toolIcon: '✏️',
+                inputFiles: files.map(f => f.originalName),
+                outputFileName: 'renamed_files.zip',
+                outputBlob: null,
+                summary: `${files.length} plików → zmienione nazwy`,
+                stats: { 'Plików': files.length }
+            });
         } catch (error) {
             console.error('Error creating zip:', error);
         } finally {
@@ -117,7 +152,7 @@ export default function BatchRenamer() {
     }, []);
 
     const removeFile = useCallback((index: number) => {
-        setFiles(prev => prev.filter((_, i) => i !== index));
+        setFiles((prev: FileToRename[]) => prev.filter((_, i: number) => i !== index));
     }, []);
 
     const MODES = [
@@ -129,42 +164,48 @@ export default function BatchRenamer() {
     ];
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {/* File Drop Zone */}
-            <div
-                className={`upload-zone ${isDragging ? 'dragging' : ''}`}
-                onDrop={handleDrop}
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                onDragLeave={() => setIsDragging(false)}
-            >
-                <input
-                    type="file"
-                    multiple
-                    onChange={handleFileSelect}
-                    style={{ display: 'none' }}
-                    id="batch-file-input"
+        <div className="flex flex-col gap-6">
+            <ToolHeader
+                title="Batch Renamer"
+                description="Zmień nazwy wielu plików jednocześnie. Dodawaj prefixy, suffixy, numerację lub używaj wyrażeń regularnych."
+                icon="✏️"
+            />
+
+            {/* File Upload */}
+            <Section title="📂 Wybierz pliki">
+                <FileUpload
+                    onFilesSelect={handleFilesSelected}
+                    multiple={true}
+                    label="Wgraj pliki do zmiany nazwy"
+                    sublabel="Obsługujemy wszystkie typy plików"
+                    icon="✏️"
                 />
-                <label htmlFor="batch-file-input" style={{ cursor: 'pointer', display: 'block' }}>
-                    <span className="icon">✏️</span>
-                    <p className="title">
-                        {files.length > 0 ? `${files.length} plików wybranych` : 'Przeciągnij pliki tutaj'}
-                    </p>
-                    <p className="subtitle">lub kliknij aby wybrać pliki do zmiany nazw</p>
-                </label>
-            </div>
+            </Section>
 
             {/* Rename Mode Selection */}
-            <div className="card">
-                <div className="card-header">
-                    <span>🔧 Tryb zmiany nazw</span>
-                </div>
-                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div className="filter-pills">
+            <Section
+                title="🔧 Tryb zmiany nazw"
+                actions={
+                    <UndoRedoButtons
+                        canUndo={canUndo}
+                        canRedo={canRedo}
+                        onUndo={undo}
+                        onRedo={redo}
+                        undoCount={undoCount}
+                        redoCount={redoCount}
+                    />
+                }
+            >
+                <div className="flex flex-col gap-6">
+                    <div className="flex flex-wrap gap-2">
                         {MODES.map(m => (
                             <button
                                 key={m.id}
-                                onClick={() => setMode(m.id)}
-                                className={`filter-pill ${mode === m.id ? 'active' : ''}`}
+                                onClick={() => setSettings({ ...settings, mode: m.id }, `Zmiana trybu na ${m.label}`)}
+                                className={`px-4 py-2 rounded-full text-sm transition-colors ${settings.mode === m.id
+                                    ? 'bg-accent text-white font-medium'
+                                    : 'bg-bg-tertiary text-text-gray hover:bg-bg-tertiary/80'
+                                    }`}
                             >
                                 {m.label}
                             </button>
@@ -172,227 +213,202 @@ export default function BatchRenamer() {
                     </div>
 
                     {/* Mode-specific inputs */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        {mode === 'prefix' && (
+                    <div className="p-4 bg-bg-tertiary rounded-lg border border-border">
+                        {settings.mode === 'prefix' && (
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                <label className="block text-sm text-text-muted mb-2">
                                     Prefix do dodania
                                 </label>
                                 <input
                                     type="text"
-                                    value={prefixValue}
-                                    onChange={(e) => setPrefixValue(e.target.value)}
+                                    value={settings.prefixValue}
+                                    onChange={(e) => setSettings({ ...settings, prefixValue: e.target.value }, 'Zmiana prefixu')}
                                     placeholder="np. produkt_"
-                                    className="input"
-                                    style={{ width: '100%' }}
+                                    className="w-full p-2 bg-bg-input border border-border rounded-lg text-text-white text-sm focus:border-accent outline-none"
                                 />
                             </div>
                         )}
-                        {mode === 'suffix' && (
+                        {settings.mode === 'suffix' && (
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                <label className="block text-sm text-text-muted mb-2">
                                     Suffix do dodania (przed rozszerzeniem)
                                 </label>
                                 <input
                                     type="text"
-                                    value={suffixValue}
-                                    onChange={(e) => setSuffixValue(e.target.value)}
+                                    value={settings.suffixValue}
+                                    onChange={(e) => setSettings({ ...settings, suffixValue: e.target.value }, 'Zmiana suffixu')}
                                     placeholder="np. _final"
-                                    className="input"
-                                    style={{ width: '100%' }}
+                                    className="w-full p-2 bg-bg-input border border-border rounded-lg text-text-white text-sm focus:border-accent outline-none"
                                 />
                             </div>
                         )}
-                        {mode === 'replace' && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        {settings.mode === 'replace' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                    <label className="block text-sm text-text-muted mb-2">
                                         Znajdź tekst
                                     </label>
                                     <input
                                         type="text"
-                                        value={findValue}
-                                        onChange={(e) => setFindValue(e.target.value)}
+                                        value={settings.findValue}
+                                        onChange={(e) => setSettings({ ...settings, findValue: e.target.value }, 'Zmiana szukanego tekstu')}
                                         placeholder="np. stary_"
-                                        className="input"
-                                        style={{ width: '100%' }}
+                                        className="w-full p-2 bg-bg-input border border-border rounded-lg text-text-white text-sm focus:border-accent outline-none"
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                    <label className="block text-sm text-text-muted mb-2">
                                         Zamień na
                                     </label>
                                     <input
                                         type="text"
-                                        value={replaceValue}
-                                        onChange={(e) => setReplaceValue(e.target.value)}
+                                        value={settings.replaceValue}
+                                        onChange={(e) => setSettings({ ...settings, replaceValue: e.target.value }, 'Zmiana tekstu zamiany')}
                                         placeholder="np. nowy_"
-                                        className="input"
-                                        style={{ width: '100%' }}
+                                        className="w-full p-2 bg-bg-input border border-border rounded-lg text-text-white text-sm focus:border-accent outline-none"
                                     />
                                 </div>
                             </div>
                         )}
-                        {mode === 'sequence' && (
-                            <>
+                        {settings.mode === 'sequence' && (
+                            <div className="flex flex-col gap-4">
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                    <label className="block text-sm text-text-muted mb-2">
                                         Wzorzec (### = numer)
                                     </label>
                                     <input
                                         type="text"
-                                        value={sequencePattern}
-                                        onChange={(e) => setSequencePattern(e.target.value)}
+                                        value={settings.sequencePattern}
+                                        onChange={(e) => setSettings({ ...settings, sequencePattern: e.target.value }, 'Zmiana wzorca sekwencji')}
                                         placeholder="np. produkt_###"
-                                        className="input"
-                                        style={{ width: '100%' }}
+                                        className="w-full p-2 bg-bg-input border border-border rounded-lg text-text-white text-sm focus:border-accent outline-none"
                                     />
                                 </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                        <label className="block text-sm text-text-muted mb-2">
                                             Numeracja od
                                         </label>
                                         <input
                                             type="number"
-                                            value={sequenceStart}
-                                            onChange={(e) => setSequenceStart(parseInt(e.target.value) || 1)}
-                                            className="input"
+                                            value={settings.sequenceStart}
+                                            onChange={(e) => setSettings({ ...settings, sequenceStart: parseInt(e.target.value) || 1 }, 'Zmiana początku sekwencji')}
+                                            className="w-full p-2 bg-bg-input border border-border rounded-lg text-text-white text-sm focus:border-accent outline-none"
                                             min={0}
-                                            style={{ width: '100%' }}
                                         />
                                     </div>
                                     <div>
-                                        <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                        <label className="block text-sm text-text-muted mb-2">
                                             Cyfry (padding)
                                         </label>
                                         <input
                                             type="number"
-                                            value={sequencePadding}
-                                            onChange={(e) => setSequencePadding(parseInt(e.target.value) || 1)}
-                                            className="input"
+                                            value={settings.sequencePadding}
+                                            onChange={(e) => setSettings({ ...settings, sequencePadding: parseInt(e.target.value) || 1 }, 'Zmiana dopełnienia sekwencji')}
+                                            className="w-full p-2 bg-bg-input border border-border rounded-lg text-text-white text-sm focus:border-accent outline-none"
                                             min={1}
                                             max={10}
-                                            style={{ width: '100%' }}
                                         />
                                     </div>
                                 </div>
-                            </>
+                            </div>
                         )}
-                        {mode === 'regex' && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                        {settings.mode === 'regex' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                    <label className="block text-sm text-text-muted mb-2">
                                         Wzorzec regex
                                     </label>
                                     <input
                                         type="text"
-                                        value={regexPattern}
-                                        onChange={(e) => setRegexPattern(e.target.value)}
+                                        value={settings.regexPattern}
+                                        onChange={(e) => setSettings({ ...settings, regexPattern: e.target.value }, 'Zmiana wzorca regex')}
                                         placeholder="np. \d+"
-                                        className="input"
-                                        style={{ width: '100%' }}
+                                        className="w-full p-2 bg-bg-input border border-border rounded-lg text-text-white text-sm focus:border-accent outline-none"
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                                    <label className="block text-sm text-text-muted mb-2">
                                         Zamień na ($1, $2 dla grup)
                                     </label>
                                     <input
                                         type="text"
-                                        value={regexReplace}
-                                        onChange={(e) => setRegexReplace(e.target.value)}
+                                        value={settings.regexReplace}
+                                        onChange={(e) => setSettings({ ...settings, regexReplace: e.target.value }, 'Zmiana zamiany regex')}
                                         placeholder="np. $1_nowy"
-                                        className="input"
-                                        style={{ width: '100%' }}
+                                        className="w-full p-2 bg-bg-input border border-border rounded-lg text-text-white text-sm focus:border-accent outline-none"
                                     />
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    <button
-                        onClick={applyRename}
-                        className="btn btn-primary"
-                        disabled={files.length === 0}
-                    >
-                        👁️ Podgląd zmian
-                    </button>
+                    <div className="flex justify-end">
+                        <button
+                            onClick={applyRename}
+                            className="btn btn-primary"
+                            disabled={files.length === 0}
+                        >
+                            👁️ Podgląd zmian
+                        </button>
+                    </div>
                 </div>
-            </div>
+            </Section>
 
             {/* Preview Table */}
             {files.length > 0 && (
-                <div className="card">
-                    <div className="card-header">
-                        <span>📋 Podgląd ({files.length} plików)</span>
-                        <button onClick={clearFiles} className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '0.4rem 0.75rem' }}>
-                            🗑️ Wyczyść
-                        </button>
-                    </div>
-                    <div className="card-body" style={{ padding: 0 }}>
-                        <div style={{ maxHeight: '400px', overflow: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ background: 'var(--bg-tertiary)' }}>
-                                        <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Oryginalna nazwa</th>
-                                        <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', width: '40px' }}>→</th>
-                                        <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Nowa nazwa</th>
-                                        <th style={{ padding: '0.75rem 0.5rem', width: '40px' }}></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {files.map((file, i) => (
-                                        <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                                                {file.originalName}
-                                            </td>
-                                            <td style={{ textAlign: 'center', color: 'var(--accent)', fontSize: '1rem' }}>→</td>
-                                            <td style={{
-                                                padding: '0.75rem 1rem',
-                                                fontSize: '0.875rem',
-                                                fontWeight: file.originalName !== file.newName ? 600 : 400,
-                                                color: file.originalName !== file.newName ? 'var(--accent)' : 'var(--text-white)'
-                                            }}>
-                                                {file.newName}
-                                            </td>
-                                            <td>
-                                                <button
-                                                    onClick={() => removeFile(i)}
-                                                    className="icon-btn"
-                                                    style={{ color: 'var(--text-muted)' }}
-                                                >×</button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                <Section
+                    title={`📋 Podgląd (${files.length} plików)`}
+                    actions={
+                        <div className="flex gap-2">
+                            <button onClick={clearFiles} className="btn btn-secondary text-xs py-1 px-2">
+                                🗑️ Wyczyść
+                            </button>
+                            <button
+                                onClick={downloadRenamed}
+                                className="btn btn-primary text-xs py-1 px-2"
+                                disabled={isProcessing || files.every((f: FileToRename) => f.originalName === f.newName)}
+                            >
+                                {isProcessing ? '⏳ Przetwarzanie...' : '📦 Pobierz ZIP'}
+                            </button>
                         </div>
+                    }
+                >
+                    <div className="max-h-[400px] overflow-auto border border-border rounded-lg">
+                        <table className="w-full text-sm border-collapse">
+                            <thead className="bg-bg-tertiary sticky top-0">
+                                <tr>
+                                    <th className="p-3 text-left text-text-muted font-medium border-b border-border">Oryginalna nazwa</th>
+                                    <th className="p-3 text-center text-text-muted font-medium border-b border-border w-10">→</th>
+                                    <th className="p-3 text-left text-text-muted font-medium border-b border-border">Nowa nazwa</th>
+                                    <th className="p-3 w-10 border-b border-border"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {files.map((file: FileToRename, i: number) => (
+                                    <tr key={i} className="border-b border-border/50 hover:bg-bg-tertiary/50 transition-colors">
+                                        <td className="p-3 text-text-gray font-mono text-xs">
+                                            {file.originalName}
+                                        </td>
+                                        <td className="p-3 text-center text-accent">→</td>
+                                        <td className={`p-3 font-mono text-xs ${file.originalName !== file.newName ? 'text-accent font-bold' : 'text-text-white'
+                                            }`}>
+                                            {file.newName}
+                                        </td>
+                                        <td className="p-3 text-center">
+                                            <button
+                                                onClick={() => removeFile(i)}
+                                                className="text-text-muted hover:text-red-400 transition-colors"
+                                            >
+                                                ✕
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                </div>
-            )}
-
-            {/* Download Button */}
-            {files.length > 0 && (
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                    <button
-                        onClick={downloadRenamed}
-                        className="btn btn-primary"
-                        disabled={isProcessing || files.every(f => f.originalName === f.newName)}
-                    >
-                        {isProcessing ? '⏳ Przetwarzanie...' : '📦 Pobierz jako ZIP'}
-                    </button>
-                </div>
-            )}
-
-            {/* Empty State */}
-            {files.length === 0 && (
-                <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>✏️</div>
-                    <div style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>
-                        Przeciągnij pliki powyżej aby rozpocząć zmianę nazw
-                    </div>
-                </div>
+                </Section>
             )}
         </div>
     );
