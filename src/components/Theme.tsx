@@ -20,8 +20,23 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         const savedTheme = localStorage.getItem('toolbox-theme') as Theme | null;
         if (savedTheme) {
             setThemeState(savedTheme);
+        } else {
+            // Auto-detect system preference if no saved theme
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            setThemeState(prefersDark ? 'dark' : 'light');
         }
         setMounted(true);
+
+        // Listen for system theme changes
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleChange = (e: MediaQueryListEvent) => {
+            // Only auto-switch if user hasn't manually set a preference
+            if (!localStorage.getItem('toolbox-theme')) {
+                setThemeState(e.matches ? 'dark' : 'light');
+            }
+        };
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
     }, []);
 
     useEffect(() => {

@@ -40,6 +40,7 @@ import BatchProcessor from '@/components/tools/BatchProcessor';
 import PriceCalculator from '@/components/tools/PriceCalculator';
 import SeoMetaGenerator from '@/components/tools/SeoMetaGenerator';
 import DesignToggle from '@/components/DesignToggle';
+import { BackendStatusIndicator } from '@/hooks/useBackendStatus';
 
 type ToolId = 'dashboard' | 'piko-empiko' | 'image-converter' | 'excel-splitter' | 'html-fixer' | 'ean-checker' | 'json-html' | 'desc-html' | 'perfume' | 'cropper' | 'struktur' | 'compare' | 'joiner' | 'translator' | 'emoji-remover' | 'batch-renamer' | 'batch-processor' | 'price-calc' | 'seo-meta';
 
@@ -175,10 +176,7 @@ function SidebarContent({ sidebarOpen, activeTool, filteredTools, handleToolClic
 
       {/* Version info */}
       <div className="sidebar-footer">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span className="status-dot" />
-          <span>Backend Online</span>
-        </div>
+        <BackendStatusIndicator />
         <div style={{ marginTop: '8px', opacity: 0.7 }}>v2.0.0 • Next.js</div>
       </div>
     </aside>
@@ -196,6 +194,7 @@ export default function Home() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [spotlightSelectedIndex, setSpotlightSelectedIndex] = useState(0);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -225,17 +224,50 @@ export default function Home() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // ESC key to close spotlight
+  // Spotlight keyboard navigation
+  const spotlightResults = TOOLS.filter(t =>
+    searchQuery === '' ||
+    t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t.desc.toLowerCase().includes(searchQuery.toLowerCase())
+  ).slice(0, 6);
+
+  useEffect(() => {
+    // Reset selection when search changes
+    setSpotlightSelectedIndex(0);
+  }, [searchQuery]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && spotlightOpen) {
+      if (!spotlightOpen) return;
+
+      if (e.key === 'Escape') {
         setSpotlightOpen(false);
         setSearchQuery('');
+        setSpotlightSelectedIndex(0);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSpotlightSelectedIndex(prev =>
+          prev < spotlightResults.length - 1 ? prev + 1 : 0
+        );
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSpotlightSelectedIndex(prev =>
+          prev > 0 ? prev - 1 : spotlightResults.length - 1
+        );
+      } else if (e.key === 'Enter' && spotlightResults.length > 0) {
+        e.preventDefault();
+        const selected = spotlightResults[spotlightSelectedIndex];
+        if (selected) {
+          setActiveTool(selected.id as ToolId);
+          setSpotlightOpen(false);
+          setSearchQuery('');
+          setSpotlightSelectedIndex(0);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [spotlightOpen]);
+  }, [spotlightOpen, spotlightResults, spotlightSelectedIndex]);
 
   const currentTool = TOOLS.find(t => t.id === activeTool);
 
@@ -470,35 +502,27 @@ export default function Home() {
                             boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
                             animation: 'spotlight-slide-up 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both'
                           }}>
-                            {TOOLS.filter(t =>
-                              searchQuery === '' ||
-                              t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                              t.desc.toLowerCase().includes(searchQuery.toLowerCase())
-                            ).slice(0, 6).map((tool, index) => (
+                            {spotlightResults.map((tool, index) => (
                               <div
                                 key={tool.id}
                                 onClick={() => {
                                   setActiveTool(tool.id as ToolId);
                                   setSpotlightOpen(false);
                                   setSearchQuery('');
+                                  setSpotlightSelectedIndex(0);
                                 }}
+                                onMouseEnter={() => setSpotlightSelectedIndex(index)}
                                 style={{
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: '1rem',
-                                  padding: '1rem 1.5rem',
+                                  padding: index === spotlightSelectedIndex ? '1rem 1.5rem 1rem 2rem' : '1rem 1.5rem',
                                   cursor: 'pointer',
                                   borderBottom: '1px solid var(--border)',
                                   transition: 'all 0.2s ease',
-                                  animation: `spotlight-item-in 0.3s ease-out ${index * 0.05}s both`
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = 'var(--bg-card-hover)';
-                                  e.currentTarget.style.paddingLeft = '2rem';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = 'transparent';
-                                  e.currentTarget.style.paddingLeft = '1.5rem';
+                                  animation: `spotlight-item-in 0.3s ease-out ${index * 0.05}s both`,
+                                  background: index === spotlightSelectedIndex ? 'var(--bg-card-hover)' : 'transparent',
+                                  borderLeft: index === spotlightSelectedIndex ? '3px solid var(--accent)' : '3px solid transparent',
                                 }}
                               >
                                 <span style={{ fontSize: '1.5rem' }}>{tool.icon}</span>
@@ -521,7 +545,6 @@ export default function Home() {
                         </div>
                       </div>
                     )}
-                    <HistoryPanel isOpen={historyOpen} onClose={() => setHistoryOpen(false)} />
                     <StatsPanel isOpen={statsOpen} onClose={() => setStatsOpen(false)} tools={TOOLS} />
                     <QueuePanel isOpen={queueOpen} onClose={() => setQueueOpen(false)} />
                     <KeyboardShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />

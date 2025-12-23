@@ -2974,3 +2974,12 @@ body {
     transform: translate(30px, -30px) scale(0.95);
   }
 }
+/* ===== SKELETON LOADING ===== */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}

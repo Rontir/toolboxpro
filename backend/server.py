@@ -35,7 +35,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate Limiting (simple in-memory implementation)
+from collections import defaultdict
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse as StarletteJSONResponse
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Simple rate limiter: 100 requests per minute per IP"""
+    
+    def __init__(self, app, requests_limit: int = 100, window_seconds: int = 60):
+        super().__init__(app)
+        self.requests_limit = requests_limit
+        self.window_seconds = window_seconds
+        self.requests: Dict[str, list] = defaultdict(list)
+    
+    async def dispatch(self, request: Request, call_next):
+        # Skip rate limiting for health checks
+        if request.url.path == "/api/health":
+            return await call_next(request)
+        
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        
+        # Clean old requests outside window
+        self.requests[client_ip] = [
+            req_time for req_time in self.requests[client_ip]
+            if now - req_time < self.window_seconds
+        ]
+        
+        # Check limit
+        if len(self.requests[client_ip]) >= self.requests_limit:
+            return StarletteJSONResponse(
+                status_code=429,
+                content={
+                    "error": "Too many requests",
+                    "message": f"Rate limit: {self.requests_limit} requests per {self.window_seconds} seconds",
+                    "retry_after": self.window_seconds
+                }
+            )
+        
+        # Record this request
+        self.requests[client_ip].append(now)
+        
+        return await call_next(request)
+
+app.add_middleware(RateLimitMiddleware, requests_limit=100, window_seconds=60)
+
 # API Endpoints
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint for frontend status monitoring"""
+    return JSONResponse(status_code=200, content={
+        "status": "ok",
+        "service": "ToolBox Pro API",
+        "timestamp": datetime.now().isoformat()
+    })
+
 @app.post("/api/process-perfumes")
 async def process_perfumes(
     source_file: UploadFile = File(...),
