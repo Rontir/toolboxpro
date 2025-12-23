@@ -27,13 +27,23 @@ def cleanup_job(job_id):
     pass
 
 # CORS setup
+origins = [
+    "http://localhost:3000",
+    "https://toolboxpro.onrender.com",
+    "https://toolboxpro-api.onrender.com"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/")
+async def root():
+    return {"message": "ToolBox Pro API is running"}
 
 # Rate Limiting (simple in-memory implementation)
 from collections import defaultdict
@@ -322,6 +332,10 @@ async def download_result(job_id: str):
 @app.get("/api/browse-folder")
 async def browse_folder():
     try:
+        # Check if running on Render (or any headless env)
+        if os.environ.get("RENDER") or os.environ.get("CI"):
+            return JSONResponse(status_code=400, content={"error": "Folder browsing not available on server"})
+
         # Run in executor to avoid blocking main thread
         from backend_processor import SystemUtils
         import asyncio
