@@ -208,7 +208,7 @@ export default function PikoEmpiko() {
         } catch (e: unknown) {
             setIsProcessing(false);
             const msg = e instanceof Error ? e.message : String(e);
-            addLog(`Błąd: ${msg}. Backend niedostępny? Sprawdź połączenie.`, 'error');
+            addLog(`Błąd: ${msg}. URL: ${API_BASE}. Backend niedostępny?`, 'error');
         }
     };
 
