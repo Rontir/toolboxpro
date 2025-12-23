@@ -129,10 +129,19 @@ export function DragHandle({ style }: { style?: React.CSSProperties }) {
 /**
  * Example draggable list wrapper
  */
+interface DragHandlePropsType {
+    draggable: boolean;
+    onDragStart: (e: React.DragEvent) => void;
+    onDragEnd: () => void;
+    onDragOver: (e: React.DragEvent) => void;
+    onDrop: (e: React.DragEvent) => void;
+    onDragLeave: () => void;
+}
+
 interface DraggableListProps<T extends DraggableItem> {
     items: T[];
     onReorder: (items: T[]) => void;
-    renderItem: (item: T, dragHandleProps: ReturnType<typeof useDragReorder>['getDragHandleProps'] extends (item: T) => infer R ? R : never, style: React.CSSProperties) => React.ReactNode;
+    renderItem: (item: T, dragHandleProps: DragHandlePropsType, style: React.CSSProperties) => React.ReactNode;
 }
 
 export function DraggableList<T extends DraggableItem>({
@@ -152,3 +161,4 @@ export function DraggableList<T extends DraggableItem>({
         </div>
     );
 }
+
