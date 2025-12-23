@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useStats } from '../Stats';
+import { useUndoRedo, useUndoRedoKeyboard, UndoRedoButtons } from '@/hooks/useUndoRedo';
 import JSZip from 'jszip';
 
 interface FilePreview {
@@ -855,7 +856,31 @@ export default function ProductCropper() {
 
             {/* Output Format Selector */}
             <div>
-                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Format wyjściowy:</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: 0 }}>Format wyjściowy:</p>
+                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <button
+                            onClick={() => {
+                                // Simple undo: reset to defaults
+                                setPlatform('original');
+                                setBgOption('white');
+                                setOutputFormat('original');
+                            }}
+                            title="Resetuj ustawienia"
+                            style={{
+                                padding: '0.25rem 0.5rem',
+                                background: 'var(--bg-tertiary)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                color: 'var(--text-gray)',
+                            }}
+                        >
+                            🔄 Reset
+                        </button>
+                    </div>
+                </div>
                 <div className="filter-pills">
                     <button
                         onClick={() => setOutputFormat('original')}
