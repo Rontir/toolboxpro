@@ -352,7 +352,26 @@ export default function ExcelSplitter() {
 
                     {/* Options */}
                     <div className="card">
-                        <div className="card-header">⚙️ Opcje podziału</div>
+                        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>⚙️ Opcje podziału</span>
+                            <button
+                                onClick={() => {
+                                    setRowsPerFile(1000);
+                                }}
+                                title="Resetuj ustawienia"
+                                style={{
+                                    padding: '0.2rem 0.4rem',
+                                    background: 'var(--bg-tertiary)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.7rem',
+                                    color: 'var(--text-gray)',
+                                }}
+                            >
+                                🔄 Reset
+                            </button>
+                        </div>
                         <div className="card-body">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                                 <label style={{ fontSize: '14px', color: 'var(--text-gray)' }}>Wierszy na plik:</label>
@@ -510,7 +529,28 @@ export default function ExcelSplitter() {
                     {/* Merge Options */}
                     {mergeFiles.length > 0 && (
                         <div className="card">
-                            <div className="card-header">⚙️ Opcje łączenia</div>
+                            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span>⚙️ Opcje łączenia</span>
+                                <button
+                                    onClick={() => {
+                                        setAddSourceColumn(true);
+                                        setSortAlphabetically(true);
+                                        setRemoveDuplicates(false);
+                                    }}
+                                    title="Resetuj ustawienia"
+                                    style={{
+                                        padding: '0.2rem 0.4rem',
+                                        background: 'var(--bg-tertiary)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.7rem',
+                                        color: 'var(--text-gray)',
+                                    }}
+                                >
+                                    🔄 Reset
+                                </button>
+                            </div>
                             <div className="card-body">
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>

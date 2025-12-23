@@ -155,8 +155,34 @@ export default function BatchRenamer() {
 
             {/* Rename Mode Selection */}
             <div className="card">
-                <div className="card-header">
+                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>🔧 Tryb zmiany nazw</span>
+                    <button
+                        onClick={() => {
+                            setMode('prefix');
+                            setPrefixValue('');
+                            setSuffixValue('');
+                            setFindValue('');
+                            setReplaceValue('');
+                            setSequenceStart(1);
+                            setSequencePadding(3);
+                            setSequencePattern('file_###');
+                            setRegexPattern('');
+                            setRegexReplace('');
+                        }}
+                        title="Resetuj ustawienia"
+                        style={{
+                            padding: '0.2rem 0.4rem',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '0.7rem',
+                            color: 'var(--text-gray)',
+                        }}
+                    >
+                        🔄 Reset
+                    </button>
                 </div>
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div className="filter-pills">

@@ -537,7 +537,24 @@ export default function ImageConverter() {
             {/* Format Selection */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                    <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>Format wyjściowy</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Format wyjściowy</span>
+                        <button
+                            onClick={() => { setFormat('WEBP'); setQuality(85); setNamingOption('keep'); }}
+                            title="Resetuj ustawienia"
+                            style={{
+                                padding: '0.2rem 0.4rem',
+                                background: 'var(--bg-tertiary)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '0.7rem',
+                                color: 'var(--text-gray)',
+                            }}
+                        >
+                            🔄
+                        </button>
+                    </div>
                     <div className="filter-pills">
                         {FORMATS.map(f => (
                             <button

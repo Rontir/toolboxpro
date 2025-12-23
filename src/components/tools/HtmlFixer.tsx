@@ -388,7 +388,31 @@ export default function HtmlFixer() {
 
             {/* Options - shared between modes */}
             <div className="card">
-                <div className="card-header">⚙️ Opcje naprawy</div>
+                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>⚙️ Opcje naprawy</span>
+                    <button
+                        onClick={() => {
+                            setFixOptions({
+                                removeStyles: true,
+                                cleanTags: true,
+                                fixEntities: true,
+                                minify: false,
+                            });
+                        }}
+                        title="Resetuj ustawienia"
+                        style={{
+                            padding: '0.2rem 0.4rem',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '0.7rem',
+                            color: 'var(--text-gray)',
+                        }}
+                    >
+                        🔄 Reset
+                    </button>
+                </div>
                 <div className="card-body">
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer', color: 'var(--text-gray)' }}>
