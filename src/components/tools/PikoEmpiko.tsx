@@ -2,10 +2,6 @@
 
 import { useState, useCallback } from 'react';
 import { useToast } from '@/components/Toast';
-import { useUndoRedo, useUndoRedoKeyboard, UndoRedoButtons } from '@/hooks/useUndoRedo';
-import { ToolHeader } from '../ui/ToolHeader';
-import { FileUpload } from '../ui/FileUpload';
-import { Section } from '../ui/Section';
 
 // Use environment variable for API, fallback to localhost for development
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -53,66 +49,8 @@ const FORMAT_OPTIONS = [
     { value: 'webp', label: 'WebP' },
 ];
 
-interface Settings {
-    activeMode: number;
-    colIndex: string;
-    colMain: string;
-    colExtra: string;
-    compressJpg: boolean;
-    convertEnabled: boolean;
-    convertFormat: string;
-    resizeEnabled: boolean;
-    maxResolution: number;
-    batchSize: number;
-    customBatchMode: boolean;
-    resumeEnabled: boolean;
-    zipEachBatch: boolean;
-    savePathsToExcel: boolean;
-    pimVersion: 'PIM3' | 'PIM4';
-    validateEnabled: boolean;
-    minWidth: number;
-    minHeight: number;
-    ratioTolerance: number;
-    soundEnabled: boolean;
-}
-
-const DEFAULT_SETTINGS: Settings = {
-    activeMode: 1,
-    colIndex: 'Indeks MDM',
-    colMain: 'Zdjęcie okładki/produktu',
-    colExtra: 'Dodatkowe zdjęcia',
-    compressJpg: false,
-    convertEnabled: false,
-    convertFormat: 'jpg',
-    resizeEnabled: false,
-    maxResolution: 3840,
-    batchSize: 0,
-    customBatchMode: false,
-    resumeEnabled: false,
-    zipEachBatch: false,
-    savePathsToExcel: false,
-    pimVersion: 'PIM3',
-    validateEnabled: false,
-    minWidth: 100,
-    minHeight: 100,
-    ratioTolerance: 0.5,
-    soundEnabled: true,
-};
-
 export default function PikoEmpiko() {
-    const {
-        state: settings,
-        setState: setSettings,
-        undo,
-        redo,
-        canUndo,
-        canRedo,
-        undoCount,
-        redoCount
-    } = useUndoRedo<Settings>(DEFAULT_SETTINGS);
-
-    useUndoRedoKeyboard(undo, redo);
-
+    const [activeMode, setActiveMode] = useState(1);
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<ExcelPreview | null>(null);
     const [progress, setProgress] = useState(0);
@@ -131,9 +69,36 @@ export default function PikoEmpiko() {
     // Toast hook
     const { showSuccess } = useToast();
 
-    // UI options
-    const [optionsOpen, setOptionsOpen] = useState(true);
+    // Column options
+    const [colIndex, setColIndex] = useState('Indeks MDM');
+    const [colMain, setColMain] = useState('Zdjęcie okładki/produktu');
+    const [colExtra, setColExtra] = useState('Dodatkowe zdjęcia');
+
+    // Image processing options
+    const [compressJpg, setCompressJpg] = useState(false);
+    const [convertEnabled, setConvertEnabled] = useState(false);
+    const [convertFormat, setConvertFormat] = useState('jpg');
+    const [resizeEnabled, setResizeEnabled] = useState(false);
+    const [maxResolution, setMaxResolution] = useState(3840);
     const [hoveredBatchBtn, setHoveredBatchBtn] = useState<number | null>(null);
+
+    // Batch options
+    const [batchSize, setBatchSize] = useState(0);
+    const [customBatchMode, setCustomBatchMode] = useState(false);
+    const [resumeEnabled, setResumeEnabled] = useState(false);
+    const [zipEachBatch, setZipEachBatch] = useState(false);
+    const [savePathsToExcel, setSavePathsToExcel] = useState(false);
+    const [pimVersion, setPimVersion] = useState<'PIM3' | 'PIM4'>('PIM3');
+
+    // Image validation options
+    const [validateEnabled, setValidateEnabled] = useState(false);
+    const [minWidth, setMinWidth] = useState(100);
+    const [minHeight, setMinHeight] = useState(100);
+    const [ratioTolerance, setRatioTolerance] = useState(0.5);
+
+    // UI options
+    const [soundEnabled, setSoundEnabled] = useState(true);
+    const [optionsOpen, setOptionsOpen] = useState(true);
 
     const addLog = (message: string, type: LogEntry['type'] = 'info') => {
         setLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), message, type }]);
@@ -166,24 +131,19 @@ export default function PikoEmpiko() {
             const main = findCol(['zdjęcie', 'photo', 'main', 'okładka']);
             const extra = findCol(['dodatkowe', 'extra', 'galeria']);
 
-            const newSettings = { ...settings };
-            if (idx) newSettings.colIndex = String(idx);
-            if (main) newSettings.colMain = String(main);
-            if (extra) newSettings.colExtra = String(extra);
-
-            if (idx || main || extra) {
-                setSettings(newSettings, 'Auto-wykrycie kolumn');
-                addLog('Auto-wykryto kolumny', 'info');
-            }
+            if (idx) setColIndex(String(idx));
+            if (main) setColMain(String(main));
+            if (extra) setColExtra(String(extra));
+            if (idx || main || extra) addLog('Auto-wykryto kolumny', 'info');
         } catch (e) {
             addLog(`Błąd: ${e}`, 'error');
         }
     }, []);
 
-    const handleFilesSelected = useCallback((files: File[]) => {
-        if (files.length > 0) {
-            handleFileSelect(files[0]);
-        }
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        const droppedFile = e.dataTransfer.files[0];
+        if (droppedFile) handleFileSelect(droppedFile);
     }, [handleFileSelect]);
 
     const handleStart = async () => {
@@ -200,19 +160,19 @@ export default function PikoEmpiko() {
         try {
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('col_index', settings.colIndex);
-            formData.append('col_main', settings.colMain);
-            formData.append('col_extra', settings.colExtra);
-            formData.append('batch_size', String(settings.batchSize));
-            formData.append('compress', String(settings.compressJpg));
-            formData.append('convert', String(settings.convertEnabled));
-            formData.append('convert_format', settings.convertFormat);
-            formData.append('resize', String(settings.resizeEnabled));
-            formData.append('max_resolution', String(settings.maxResolution));
-            formData.append('resume', String(settings.resumeEnabled));
-            formData.append('zip_each_batch', String(settings.zipEachBatch));
-            formData.append('save_paths_to_excel', String(settings.savePathsToExcel));
-            formData.append('pim_version', settings.pimVersion);
+            formData.append('col_index', colIndex);
+            formData.append('col_main', colMain);
+            formData.append('col_extra', colExtra);
+            formData.append('batch_size', String(batchSize));
+            formData.append('compress', String(compressJpg));
+            formData.append('convert', String(convertEnabled));
+            formData.append('convert_format', convertFormat);
+            formData.append('resize', String(resizeEnabled));
+            formData.append('max_resolution', String(maxResolution));
+            formData.append('resume', String(resumeEnabled));
+            formData.append('zip_each_batch', String(zipEachBatch));
+            formData.append('save_paths_to_excel', String(savePathsToExcel));
+            formData.append('pim_version', pimVersion);
 
             const res = await fetch(`${API_BASE}/api/piko-empiko`, { method: 'POST', body: formData });
             if (!res.ok) throw new Error('Upload failed');
@@ -236,7 +196,7 @@ export default function PikoEmpiko() {
                         setDownloadFilename(`piko_images_${timestamp}.zip`);
                         setDownloadUrl(`${API_BASE}/api/download/${job_id}`);
                         addLog('Zakończono!', 'success');
-                        if (settings.soundEnabled) new Audio().play().catch(() => { });
+                        if (soundEnabled) new Audio().play().catch(() => { });
                         showSuccess('Plik gotowy!');
                     } else if (pData.status === 'error') {
                         clearInterval(poll);
@@ -263,16 +223,16 @@ export default function PikoEmpiko() {
         setProgress(0);
         setStatus('Przetwarzanie lokalne...');
         setLocalResult(null);
-        addLog(`Rozpoczynam tryb ${settings.activeMode}: ${MODES.find(m => m.id === settings.activeMode)?.title}`, 'info');
+        addLog(`Rozpoczynam tryb ${activeMode}: ${MODES.find(m => m.id === activeMode)?.title}`, 'info');
 
         try {
             const formData = new FormData();
-            formData.append('mode', String(settings.activeMode));
+            formData.append('mode', String(activeMode));
             formData.append('folder_path', folderPath);
             formData.append('options', JSON.stringify({}));
 
             // For modes 6 and 7, include Excel file
-            if ((settings.activeMode === 6 || settings.activeMode === 7) && file) {
+            if ((activeMode === 6 || activeMode === 7) && file) {
                 formData.append('file', file);
             }
 
@@ -333,350 +293,489 @@ export default function PikoEmpiko() {
     };
 
     return (
-        <div className="flex flex-col gap-6">
-            <ToolHeader
-                title="PikoEmpiko v6.0"
-                description="Zaawansowane narzędzie do pobierania zdjęć i zarządzania plikami. Obsługuje wiele trybów pracy."
-                icon="⚡"
-            />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 700, background: 'linear-gradient(to right, white, var(--accent))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                    PikoEmpiko
+                </h2>
+                <span style={{ background: 'var(--accent)', color: 'black', fontSize: '0.7rem', fontWeight: 700, padding: '0.25rem 0.5rem', borderRadius: '9999px' }}>v6.0</span>
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                Zaawansowane narzędzie do pobierania zdjęć i zarządzania plikami.
+            </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            {/* Mode Cards */}
+            <div className="mode-cards">
                 {MODES.map(mode => (
                     <button
                         key={mode.id}
-                        onClick={() => setSettings({ ...settings, activeMode: mode.id }, `Zmiana trybu na ${mode.title}`)}
-                        className={`p-3 rounded-lg border transition-all flex flex-col items-center gap-2 text-center h-full ${settings.activeMode === mode.id
-                            ? 'bg-accent/10 border-accent text-accent'
-                            : 'bg-bg-tertiary border-border hover:border-accent/50 text-text-gray'
-                            }`}
+                        onClick={() => setActiveMode(mode.id)}
+                        className={`mode-card ${activeMode === mode.id ? 'active' : ''}`}
                     >
-                        <span className="text-2xl">{mode.icon}</span>
-                        <div className="flex flex-col">
-                            <span className="font-semibold text-xs">{mode.title}</span>
-                            <span className="text-[10px] opacity-70">{mode.desc}</span>
-                        </div>
+                        <span className="icon">{mode.icon}</span>
+                        <span className="title">{mode.title}</span>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center' }}>{mode.desc}</span>
                     </button>
                 ))}
             </div>
 
             {/* Excel Preview */}
             {preview && (
-                <Section title="📊 Podgląd Excel" actions={<span className="text-xs text-text-muted">{preview.totalRows} wierszy</span>}>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-xs text-left border-collapse">
+                <div className="card">
+                    <div className="card-header">
+                        <span>📊 Podgląd Excel</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{preview.totalRows} wierszy</span>
+                    </div>
+                    <div className="card-body" style={{ maxHeight: '10rem', overflow: 'auto' }}>
+                        <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
                             <thead>
-                                <tr className="border-b border-border">
-                                    {preview.headers.map((h, i) => <th key={i} className="p-2 text-text-muted font-medium">{h}</th>)}
+                                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                                    {preview.headers.map((h, i) => <th key={i} style={{ padding: '0.5rem', textAlign: 'left', color: 'var(--text-muted)' }}>{h}</th>)}
                                 </tr>
                             </thead>
                             <tbody>
                                 {preview.rows.map((row, i) => (
-                                    <tr key={i} className="border-b border-border last:border-0 hover:bg-bg-secondary/50">
-                                        {row.map((cell, j) => <td key={j} className="p-2 max-w-[150px] truncate">{String(cell ?? '')}</td>)}
+                                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                                        {row.map((cell, j) => <td key={j} style={{ padding: '0.5rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(cell ?? '')}</td>)}
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
-                </Section>
+                </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left Column */}
-                <div className="space-y-6">
-                    <Section title="1. Wejście">
-                        {settings.activeMode === 1 ? (
-                            <FileUpload
-                                onFilesSelect={handleFilesSelected}
+            {/* Two column layout */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                {/* Left: Upload + Options */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {/* Upload */}
+                    {activeMode === 1 && (
+                        <div
+                            className="upload-zone"
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={handleDrop}
+                            onClick={() => document.getElementById('piko-file')?.click()}
+                        >
+                            <input
+                                type="file"
+                                id="piko-file"
                                 accept=".xlsx,.xls"
-                                label="Wgraj plik Excel"
-                                sublabel="Przeciągnij lub kliknij"
-                                icon="📥"
+                                className="hidden"
+                                onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
                             />
-                        ) : (
-                            <div className="space-y-4">
-                                <div
-                                    onClick={async () => {
-                                        try {
-                                            addLog('Otwieranie okna wyboru folderu...', 'info');
-                                            const res = await fetch(`${API_BASE}/api/browse-folder`);
-                                            const data = await res.json();
-                                            if (data.path) {
-                                                setFolderPath(data.path);
-                                                addLog(`Wybrano: ${data.path}`, 'success');
-                                            } else if (data.error) {
-                                                addLog(`Błąd: ${data.error}`, 'error');
-                                            }
-                                        } catch (e) {
-                                            addLog('Kliknij w okno dialogowe wyboru folderu', 'warning');
+                            <span className="icon">{file ? '✅' : '📥'}</span>
+                            <p className="title">{file?.name || 'Przeciągnij plik Excel'}</p>
+                            <p className="subtitle">lub kliknij aby wybrać</p>
+                        </div>
+                    )}
+
+                    {activeMode !== 1 && (
+                        <>
+                            {/* Folder picker - styled like upload zone */}
+                            <div
+                                className="upload-zone"
+                                onClick={async () => {
+                                    try {
+                                        addLog('Otwieranie okna wyboru folderu...', 'info');
+                                        const res = await fetch(`${API_BASE}/api/browse-folder`);
+                                        const data = await res.json();
+                                        if (data.path) {
+                                            setFolderPath(data.path);
+                                            addLog(`Wybrano: ${data.path}`, 'success');
+                                        } else if (data.error) {
+                                            addLog(`Błąd: ${data.error}`, 'error');
                                         }
-                                    }}
-                                    className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all group"
+                                    } catch (e) {
+                                        addLog('Kliknij w okno dialogowe wyboru folderu', 'warning');
+                                    }
+                                }}
+                                style={{ padding: '1.5rem' }}
+                            >
+                                <span className="icon">{folderPath ? '📂' : '📁'}</span>
+                                <p className="title" style={{
+                                    fontSize: folderPath && folderPath.length > 40 ? '12px' : '14px',
+                                    wordBreak: 'break-all',
+                                    maxWidth: '100%'
+                                }}>
+                                    {folderPath ? (folderPath.length > 50 ? '...' + folderPath.slice(-47) : folderPath) : 'Kliknij aby wybrać folder'}
+                                </p>
+                                <p className="subtitle">
+                                    {activeMode === 2 && 'Generuje raport Excel'}
+                                    {activeMode === 3 && 'Naprawa nazw plików'}
+                                    {activeMode === 4 && 'Rename na EAN'}
+                                    {activeMode === 5 && 'Batch subfoldery'}
+                                    {activeMode === 6 && 'Rename wg Excel'}
+                                    {activeMode === 7 && 'Inteligentny tryb'}
+                                </p>
+                            </div>
+
+                            {/* Excel upload for modes 6 and 7 */}
+                            {(activeMode === 6 || activeMode === 7) && (
+                                <div
+                                    className="upload-zone"
+                                    onClick={() => document.getElementById('piko-file')?.click()}
+                                    style={{ padding: '1.5rem' }}
                                 >
-                                    <div className="text-4xl mb-3 group-hover:scale-110 transition-transform">
-                                        {folderPath ? '📂' : '📁'}
+                                    <span className="icon">{file ? '✅' : '📥'}</span>
+                                    <p className="title">{file?.name || 'Dodaj plik Excel z mapowaniem'}</p>
+                                    <p className="subtitle">wymagany dla tego trybu</p>
+                                </div>
+                            )}
+
+                            {/* Local result */}
+                            {localResult && (
+                                <div style={{
+                                    padding: '0.75rem 1rem',
+                                    background: localResult.status === 'success' ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)',
+                                    border: `1px solid ${localResult.status === 'success' ? 'var(--accent)' : 'var(--error)'}`,
+                                    borderRadius: '8px',
+                                    fontSize: '0.85rem'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: localResult.file ? '0.5rem' : 0 }}>
+                                        {localResult.status === 'success' ? '✅' : '❌'}
+                                        <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{localResult.message}</span>
                                     </div>
-                                    <p className="font-medium text-text-white mb-1 break-all">
-                                        {folderPath || 'Kliknij aby wybrać folder'}
-                                    </p>
-                                    <p className="text-sm text-text-muted">
-                                        {settings.activeMode === 2 && 'Generuje raport Excel'}
-                                        {settings.activeMode === 3 && 'Naprawa nazw plików'}
-                                        {settings.activeMode === 4 && 'Rename na EAN'}
-                                        {settings.activeMode === 5 && 'Batch subfoldery'}
-                                        {settings.activeMode === 6 && 'Rename wg Excel'}
-                                        {settings.activeMode === 7 && 'Inteligentny tryb'}
-                                    </p>
+
+                                    {localResult.file && (
+                                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                            <button
+                                                className="btn btn-secondary"
+                                                onClick={async () => {
+                                                    try {
+                                                        await fetch(`${API_BASE}/api/open-file`, {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ file_path: localResult.file })
+                                                        });
+                                                        addLog('Otwarto lokalizację pliku', 'success');
+                                                    } catch (e) {
+                                                        addLog('Błąd otwierania pliku', 'error');
+                                                    }
+                                                }}
+                                                style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
+                                            >
+                                                📂 Otwórz lokalizację
+                                            </button>
+                                            <button
+                                                className="btn btn-primary"
+                                                onClick={() => {
+                                                    const url = `${API_BASE}/api/download-file?path=${encodeURIComponent(localResult.file!)}`;
+                                                    window.open(url, '_blank');
+                                                    addLog('Pobieranie pliku...', 'info');
+                                                }}
+                                                style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
+                                            >
+                                                ⬇️ Pobierz
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
+                            )}
+                        </>
+                    )}
 
-                                {(settings.activeMode === 6 || settings.activeMode === 7) && (
-                                    <FileUpload
-                                        onFilesSelect={handleFilesSelected}
-                                        accept=".xlsx,.xls"
-                                        label="Dodaj plik Excel z mapowaniem"
-                                        sublabel="Wymagany dla tego trybu"
-                                        icon="📊"
-                                    />
-                                )}
-                            </div>
-                        )}
-                    </Section>
-
-                    <Section
-                        title="2. Opcje"
-                        actions={
-                            <div className="flex items-center gap-2">
-                                <UndoRedoButtons
-                                    canUndo={canUndo}
-                                    canRedo={canRedo}
-                                    onUndo={undo}
-                                    onRedo={redo}
-                                    undoCount={undoCount}
-                                    redoCount={redoCount}
-                                />
-                                <button onClick={() => setOptionsOpen(!optionsOpen)} className="text-text-muted hover:text-text-white">
-                                    {optionsOpen ? '▼' : '▶'}
-                                </button>
-                            </div>
-                        }
-                    >
+                    {/* Options Panel */}
+                    <div className="card">
+                        <div
+                            className="card-header"
+                            onClick={() => setOptionsOpen(!optionsOpen)}
+                            style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}
+                        >
+                            <span>⚙️ Opcje</span>
+                            <span>{optionsOpen ? '▼' : '▶'}</span>
+                        </div>
                         {optionsOpen && (
-                            <div className="space-y-4">
-                                <div className="grid grid-cols-3 gap-2">
-                                    <input className="form-input text-xs" value={settings.colIndex} onChange={e => setSettings({ ...settings, colIndex: e.target.value }, 'Zmiana kolumny indeksu')} placeholder="Kolumna indeksu" />
-                                    <input className="form-input text-xs" value={settings.colMain} onChange={e => setSettings({ ...settings, colMain: e.target.value }, 'Zmiana kolumny zdjęcia głównego')} placeholder="Zdjęcie główne" />
-                                    <input className="form-input text-xs" value={settings.colExtra} onChange={e => setSettings({ ...settings, colExtra: e.target.value }, 'Zmiana kolumny zdjęć dodatkowych')} placeholder="Prefix dodatk." />
+                            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                {/* Column inputs */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                                    <input className="form-input" value={colIndex} onChange={e => setColIndex(e.target.value)} placeholder="Kolumna indeksu" style={{ padding: '0.5rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-white)', fontSize: '0.8rem' }} />
+                                    <input className="form-input" value={colMain} onChange={e => setColMain(e.target.value)} placeholder="Zdjęcie główne" style={{ padding: '0.5rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-white)', fontSize: '0.8rem' }} />
+                                    <input className="form-input" value={colExtra} onChange={e => setColExtra(e.target.value)} placeholder="Prefix dodatk." style={{ padding: '0.5rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-white)', fontSize: '0.8rem' }} />
                                 </div>
 
-                                <div className="space-y-3 text-sm">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={settings.compressJpg} onChange={e => setSettings({ ...settings, compressJpg: e.target.checked }, e.target.checked ? 'Włączenie kompresji JPG' : 'Wyłączenie kompresji JPG')} className="accent-accent" />
-                                        <span>Kompresuj JPG</span>
+                                {/* Image Processing Options */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.875rem' }}>
+                                    {/* Compress */}
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: compressJpg ? 'var(--accent)' : 'var(--text-gray)' }}>
+                                        <input type="checkbox" checked={compressJpg} onChange={e => setCompressJpg(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+                                        ✓ Kompresuj JPG
                                     </label>
 
-                                    <div className="flex items-center gap-3 flex-wrap">
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" checked={settings.convertEnabled} onChange={e => setSettings({ ...settings, convertEnabled: e.target.checked }, e.target.checked ? 'Włączenie konwersji' : 'Wyłączenie konwersji')} className="accent-accent" />
-                                            <span>Konwertuj do:</span>
+                                    {/* Convert */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: convertEnabled ? 'var(--accent)' : 'var(--text-gray)' }}>
+                                            <input type="checkbox" checked={convertEnabled} onChange={e => setConvertEnabled(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+                                            ✓ Konwertuj do:
                                         </label>
                                         <select
-                                            value={settings.convertFormat}
-                                            onChange={e => setSettings({ ...settings, convertFormat: e.target.value }, `Zmiana formatu na ${e.target.value}`)}
-                                            disabled={!settings.convertEnabled}
-                                            className="form-select text-xs py-1"
+                                            value={convertFormat}
+                                            onChange={e => setConvertFormat(e.target.value)}
+                                            disabled={!convertEnabled}
+                                            style={{ padding: '0.35rem 0.5rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-white)', fontSize: '0.8rem' }}
                                         >
                                             {FORMAT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
                                         </select>
                                     </div>
 
-                                    <div className="flex items-center gap-3 flex-wrap">
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" checked={settings.resizeEnabled} onChange={e => setSettings({ ...settings, resizeEnabled: e.target.checked }, e.target.checked ? 'Włączenie zmiany rozmiaru' : 'Wyłączenie zmiany rozmiaru')} className="accent-accent" />
-                                            <span>Max rozdzielczość:</span>
+                                    {/* Resize */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: resizeEnabled ? 'var(--accent)' : 'var(--text-gray)' }}>
+                                            <input type="checkbox" checked={resizeEnabled} onChange={e => setResizeEnabled(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+                                            ✓ Max rozdzielczość (resize):
                                         </label>
                                         <select
-                                            value={settings.maxResolution}
-                                            onChange={e => setSettings({ ...settings, maxResolution: Number(e.target.value) }, `Zmiana rozdzielczości na ${e.target.value}`)}
-                                            disabled={!settings.resizeEnabled}
-                                            className="form-select text-xs py-1"
+                                            value={maxResolution}
+                                            onChange={e => setMaxResolution(Number(e.target.value))}
+                                            disabled={!resizeEnabled}
+                                            style={{ padding: '0.35rem 0.5rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-white)', fontSize: '0.8rem' }}
                                         >
                                             {RESOLUTION_PRESETS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                                         </select>
                                     </div>
 
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={settings.resumeEnabled} onChange={e => setSettings({ ...settings, resumeEnabled: e.target.checked }, e.target.checked ? 'Włączenie Resume' : 'Wyłączenie Resume')} className="accent-accent" />
-                                        <span>Resume/Continue (kontynuuj przerwane)</span>
+                                    {/* Resume */}
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: resumeEnabled ? 'var(--accent)' : 'var(--text-gray)' }}>
+                                        <input type="checkbox" checked={resumeEnabled} onChange={e => setResumeEnabled(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+                                        ⏩ Resume/Continue (kontynuuj przerwane)
                                     </label>
 
-                                    <div className="space-y-2">
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" checked={settings.validateEnabled} onChange={e => setSettings({ ...settings, validateEnabled: e.target.checked }, e.target.checked ? 'Włączenie walidacji' : 'Wyłączenie walidacji')} className="accent-accent" />
-                                            <span>Walidacja obrazów</span>
+                                    {/* Image Validation */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: validateEnabled ? 'var(--accent)' : 'var(--text-gray)' }}>
+                                            <input type="checkbox" checked={validateEnabled} onChange={e => setValidateEnabled(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+                                            🔍 Walidacja obrazów:
                                         </label>
-                                        {settings.validateEnabled && (
-                                            <div className="flex gap-2 pl-6">
-                                                <input type="number" value={settings.minWidth} onChange={e => setSettings({ ...settings, minWidth: Number(e.target.value) }, 'Zmiana min szerokości')} className="form-input w-20 text-xs" placeholder="Min W" />
-                                                <input type="number" value={settings.minHeight} onChange={e => setSettings({ ...settings, minHeight: Number(e.target.value) }, 'Zmiana min wysokości')} className="form-input w-20 text-xs" placeholder="Min H" />
-                                                <input type="number" value={settings.ratioTolerance} onChange={e => setSettings({ ...settings, ratioTolerance: Number(e.target.value) }, 'Zmiana tolerancji proporcji')} className="form-input w-20 text-xs" placeholder="Tol." />
+                                        {validateEnabled && (
+                                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Min szer:</span>
+                                                    <input
+                                                        type="number"
+                                                        value={minWidth}
+                                                        onChange={e => setMinWidth(Number(e.target.value))}
+                                                        style={{ width: '60px', padding: '0.25rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text-white)', fontSize: '0.75rem' }}
+                                                    />
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Min wys:</span>
+                                                    <input
+                                                        type="number"
+                                                        value={minHeight}
+                                                        onChange={e => setMinHeight(Number(e.target.value))}
+                                                        style={{ width: '60px', padding: '0.25rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text-white)', fontSize: '0.75rem' }}
+                                                    />
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tolerancja:</span>
+                                                    <input
+                                                        type="number"
+                                                        step="0.1"
+                                                        min="0"
+                                                        max="2"
+                                                        value={ratioTolerance}
+                                                        onChange={e => setRatioTolerance(Number(e.target.value))}
+                                                        style={{ width: '50px', padding: '0.25rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text-white)', fontSize: '0.75rem' }}
+                                                    />
+                                                </div>
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="flex items-center gap-3 flex-wrap">
-                                        <span>Paczki:</span>
-                                        {!settings.customBatchMode ? (
+                                    {/* Batch Size */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                        <span style={{ color: 'var(--text-gray)' }}>📦 Podziel na paczki:</span>
+                                        {!customBatchMode ? (
                                             <select
-                                                value={settings.batchSize}
-                                                onChange={e => e.target.value === 'custom' ? setSettings({ ...settings, customBatchMode: true }, 'Włączenie własnej paczki') : setSettings({ ...settings, batchSize: Number(e.target.value) }, `Zmiana paczki na ${e.target.value}`)}
-                                                className="form-select text-xs py-1"
+                                                value={batchSize}
+                                                onChange={e => {
+                                                    if (e.target.value === 'custom') {
+                                                        setCustomBatchMode(true);
+                                                    } else {
+                                                        setBatchSize(Number(e.target.value));
+                                                    }
+                                                }}
+                                                style={{
+                                                    padding: '0.4rem 0.6rem',
+                                                    background: '#1a1a1a',
+                                                    border: '1px solid #333',
+                                                    borderRadius: '6px',
+                                                    color: '#fff',
+                                                    fontSize: '0.85rem',
+                                                    cursor: 'pointer',
+                                                    minWidth: '160px'
+                                                }}
                                             >
-                                                <option value={0}>Nie dziel</option>
-                                                {BATCH_PRESETS.slice(1).map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                                                <option value="custom">Własna...</option>
+                                                <option value={0}>Nie dziel (wyłączone)</option>
+                                                <option value={25}>25 produktów</option>
+                                                <option value={50}>50 produktów</option>
+                                                <option value={75}>75 produktów</option>
+                                                <option value={100}>100 produktów</option>
+                                                <option value={150}>150 produktów</option>
+                                                <option value={200}>200 produktów</option>
+                                                <option value={300}>300 produktów</option>
+                                                <option value={500}>500 produktów</option>
+                                                <option value="custom">Własna wartość...</option>
                                             </select>
                                         ) : (
-                                            <div className="flex items-center gap-2">
-                                                <input type="number" value={settings.batchSize} onChange={e => setSettings({ ...settings, batchSize: Math.max(0, Number(e.target.value)) }, 'Zmiana rozmiaru paczki')} className="form-input w-20 text-xs" />
-                                                <button onClick={() => setSettings({ ...settings, customBatchMode: false }, 'Wyłączenie własnej paczki')} className="text-xs text-accent hover:underline">Preset</button>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    autoFocus
+                                                    value={batchSize}
+                                                    onChange={e => setBatchSize(Math.max(0, Number(e.target.value)))}
+                                                    placeholder="Wpisz liczbę"
+                                                    style={{
+                                                        width: '100px',
+                                                        padding: '0.4rem 0.5rem',
+                                                        background: '#1a1a1a',
+                                                        border: '1px solid #1db954',
+                                                        borderRadius: '6px',
+                                                        color: '#fff',
+                                                        fontSize: '0.85rem',
+                                                        textAlign: 'center'
+                                                    }}
+                                                />
+                                                <span style={{ color: '#888', fontSize: '0.8rem' }}>produktów</span>
+                                                <button
+                                                    onClick={() => setCustomBatchMode(false)}
+                                                    style={{
+                                                        padding: '0.3rem 0.5rem',
+                                                        background: '#333',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        color: '#aaa',
+                                                        fontSize: '0.75rem',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    ← Preset
+                                                </button>
                                             </div>
                                         )}
                                     </div>
 
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={settings.zipEachBatch} onChange={e => setSettings({ ...settings, zipEachBatch: e.target.checked }, e.target.checked ? 'Włączenie ZIP dla paczek' : 'Wyłączenie ZIP dla paczek')} className="accent-accent" />
-                                        <span>Spakuj każdą paczkę do ZIP</span>
+                                    {/* Zip each batch */}
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: zipEachBatch ? 'var(--accent)' : 'var(--text-gray)' }}>
+                                        <input type="checkbox" checked={zipEachBatch} onChange={e => setZipEachBatch(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+                                        📦 Spakuj do ZIP (każdą paczkę)
                                     </label>
 
-                                    <div className="flex items-center gap-3">
-                                        <span>Format:</span>
-                                        <div className="flex gap-1">
+                                    {/* PIM Version */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                        <span style={{ color: 'var(--text-gray)' }}>📋 Format pliku:</span>
+                                        <div style={{ display: 'flex', gap: '0.25rem' }}>
                                             {(['PIM3', 'PIM4'] as const).map(v => (
                                                 <button
                                                     key={v}
-                                                    onClick={() => setSettings({ ...settings, pimVersion: v }, `Zmiana wersji PIM na ${v}`)}
-                                                    className={`px-2 py-1 rounded text-xs transition-colors ${settings.pimVersion === v ? 'bg-accent text-black font-bold' : 'bg-bg-input text-text-muted hover:bg-bg-secondary'}`}
+                                                    onClick={() => setPimVersion(v)}
+                                                    style={{
+                                                        padding: '0.3rem 0.75rem',
+                                                        background: pimVersion === v ? '#1db954' : '#2a2a2a',
+                                                        color: pimVersion === v ? 'black' : '#888',
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: pimVersion === v ? 700 : 500,
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.15s ease'
+                                                    }}
                                                 >
                                                     {v}
                                                 </button>
                                             ))}
                                         </div>
+                                        {pimVersion === 'PIM4' && (
+                                            <span style={{ color: '#666', fontSize: '0.75rem' }}>+ kolumna "Typ: singiel"</span>
+                                        )}
                                     </div>
 
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={settings.savePathsToExcel} onChange={e => setSettings({ ...settings, savePathsToExcel: e.target.checked }, e.target.checked ? 'Włączenie zapisu ścieżek' : 'Wyłączenie zapisu ścieżek')} className="accent-accent" />
-                                        <span>Zapisz ścieżki w Excel</span>
-                                    </label>
-
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={settings.soundEnabled} onChange={e => setSettings({ ...settings, soundEnabled: e.target.checked }, e.target.checked ? 'Włączenie dźwięku' : 'Wyłączenie dźwięku')} className="accent-accent" />
-                                        <span>Dźwięk po zakończeniu</span>
+                                    {/* Save paths to Excel */}
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: savePathsToExcel ? 'var(--accent)' : 'var(--text-gray)' }}>
+                                        <input type="checkbox" checked={savePathsToExcel} onChange={e => setSavePathsToExcel(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+                                        📝 Zapisz pełne ścieżki w Excel
                                     </label>
                                 </div>
+
+                                {/* Sound */}
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: soundEnabled ? 'var(--accent)' : 'var(--text-gray)', fontSize: '0.875rem' }}>
+                                    <input type="checkbox" checked={soundEnabled} onChange={e => setSoundEnabled(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+                                    🔔 Dźwięk po zakończeniu
+                                </label>
                             </div>
                         )}
-                    </Section>
+                    </div>
                 </div>
 
-                {/* Right Column */}
-                <div className="space-y-6">
-                    <Section title="Status">
-                        <div className="mb-6">
-                            <div className="flex justify-between mb-2 text-sm">
-                                <span className="text-text-gray">{status}</span>
-                                <span className="font-bold text-accent">{progress}%</span>
+                {/* Right: Progress + Log */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {/* Progress */}
+                    <div className="card">
+                        <div className="card-body">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                                <span style={{ fontSize: '0.875rem', color: 'var(--text-gray)' }}>{status}</span>
+                                <span style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--accent)' }}>{progress}%</span>
                             </div>
-                            <div className="w-full bg-bg-input rounded-full h-2.5">
-                                <div className="bg-accent h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                            <div className="progress-bar">
+                                <div className="progress-fill" style={{ width: `${progress}%` }} />
                             </div>
                         </div>
+                    </div>
 
-                        {localResult && (
-                            <div className={`p-3 rounded-lg border text-sm mb-4 ${localResult.status === 'success' ? 'bg-green-500/10 border-green-500/50 text-green-400' : 'bg-red-500/10 border-red-500/50 text-red-400'}`}>
-                                <div className="flex items-center gap-2 font-medium">
-                                    {localResult.status === 'success' ? '✅' : '❌'} {localResult.message}
-                                </div>
-                                {localResult.file && (
-                                    <div className="flex gap-2 mt-2">
-                                        <button
-                                            onClick={async () => {
-                                                try {
-                                                    await fetch(`${API_BASE}/api/open-file`, {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify({ file_path: localResult.file })
-                                                    });
-                                                    addLog('Otwarto lokalizację pliku', 'success');
-                                                } catch (e) {
-                                                    addLog('Błąd otwierania pliku', 'error');
-                                                }
-                                            }}
-                                            className="btn btn-secondary text-xs py-1 px-2"
-                                        >
-                                            📂 Otwórz
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                const url = `${API_BASE}/api/download-file?path=${encodeURIComponent(localResult.file!)}`;
-                                                window.open(url, '_blank');
-                                                addLog('Pobieranie pliku...', 'info');
-                                            }}
-                                            className="btn btn-primary text-xs py-1 px-2"
-                                        >
-                                            ⬇️ Pobierz
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <div className="bg-bg-input rounded-lg border border-border p-3 h-48 overflow-y-auto font-mono text-xs space-y-1">
+                    {/* Log */}
+                    <div className="card" style={{ flex: 1 }}>
+                        <div className="card-header">📋 Log</div>
+                        <div className="card-body" style={{ maxHeight: '200px', overflowY: 'auto', fontSize: '0.8rem', fontFamily: 'monospace' }}>
                             {logs.map((log, i) => (
-                                <div key={i} className={`${log.type === 'error' ? 'text-red-400' :
-                                    log.type === 'success' ? 'text-green-400' :
-                                        log.type === 'warning' ? 'text-yellow-400' :
-                                            'text-text-muted'
-                                    }`}>
-                                    <span className="opacity-50">[{log.timestamp}]</span> {log.message}
+                                <div
+                                    key={i}
+                                    style={{
+                                        padding: '0.25rem 0',
+                                        color: log.type === 'error' ? '#ef4444' : log.type === 'success' ? 'var(--accent)' : log.type === 'warning' ? '#fbbf24' : 'var(--text-gray)'
+                                    }}
+                                >
+                                    <span style={{ color: 'var(--text-muted)' }}>[{log.timestamp}]</span> {log.message}
                                 </div>
                             ))}
                         </div>
-                    </Section>
+                    </div>
 
-                    <Section title="Akcje">
-                        <div className="flex gap-3">
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <button
+                            onClick={activeMode === 1 ? handleStart : handleStartLocal}
+                            disabled={isProcessing || (activeMode === 1 ? !file : !folderPath.trim())}
+                            className="btn btn-primary"
+                            style={{ flex: 1 }}
+                        >
+                            {isProcessing ? '⏳ Przetwarzanie...' : '🚀 Uruchom'}
+                        </button>
+                        {downloadUrl && (
                             <button
-                                onClick={settings.activeMode === 1 ? handleStart : handleStartLocal}
-                                disabled={isProcessing || (settings.activeMode === 1 ? !file : !folderPath.trim())}
-                                className="btn btn-primary flex-1 py-3"
+                                onClick={async () => {
+                                    try {
+                                        const response = await fetch(downloadUrl);
+                                        const blob = await response.blob();
+                                        const url = window.URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = downloadFilename;
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        window.URL.revokeObjectURL(url);
+                                        document.body.removeChild(a);
+                                    } catch (err) {
+                                        addLog('Błąd pobierania pliku', 'error');
+                                    }
+                                }}
+                                className="btn btn-primary"
                             >
-                                {isProcessing ? '⏳ Przetwarzanie...' : '🚀 Uruchom'}
+                                ⬇️ Pobierz
                             </button>
-                            {downloadUrl && (
-                                <button
-                                    onClick={async () => {
-                                        try {
-                                            const response = await fetch(downloadUrl);
-                                            const blob = await response.blob();
-                                            const url = window.URL.createObjectURL(blob);
-                                            const a = document.createElement('a');
-                                            a.href = url;
-                                            a.download = downloadFilename;
-                                            document.body.appendChild(a);
-                                            a.click();
-                                            window.URL.revokeObjectURL(url);
-                                            document.body.removeChild(a);
-                                        } catch (err) {
-                                            addLog('Błąd pobierania pliku', 'error');
-                                        }
-                                    }}
-                                    className="btn btn-secondary"
-                                >
-                                    ⬇️ Pobierz
-                                </button>
-                            )}
-                        </div>
-                    </Section>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

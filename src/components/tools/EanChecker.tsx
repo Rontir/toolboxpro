@@ -3,9 +3,6 @@
 import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { useExcelWorker } from '@/hooks/useExcelWorker';
-import { ToolHeader } from '../ui/ToolHeader';
-import { FileUpload } from '../ui/FileUpload';
-import { Section } from '../ui/Section';
 
 interface ExcelRow {
     [key: string]: string;
@@ -181,8 +178,13 @@ export default function EanChecker() {
         }
     }, [parseExcel]);
 
-    const handleFilesSelected = useCallback((files: File[]) => {
-        if (files.length > 0) handleFile(files[0]);
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const f = e.dataTransfer.files[0];
+        if (f && (f.name.endsWith('.xlsx') || f.name.endsWith('.xls'))) {
+            handleFile(f);
+        }
     }, [handleFile]);
 
     const processData = () => {
@@ -254,116 +256,129 @@ export default function EanChecker() {
     };
 
     return (
-        <div className="flex flex-col gap-6">
-            <ToolHeader
-                title="EAN Checker"
-                description="Weryfikuj poprawność kodów EAN i znajduj ukryte kody w opisach produktów."
-                icon="🔍"
-            />
-
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'relative' }}>
             {/* Loading Overlay */}
             {isLoading && (
                 <div className="upload-progress-overlay">
                     <div className="upload-progress-spinner" />
-                    <p className="text-white text-lg mt-5">{loadingText}</p>
+                    <p style={{ color: 'white', fontSize: '18px', marginTop: '20px' }}>{loadingText}</p>
                 </div>
             )}
-
-            <Section title="1. Wgraj plik Excel">
-                <FileUpload
-                    onFilesSelect={handleFilesSelected}
+            {/* Upload */}
+            <div
+                className={`upload-zone ${isDragging ? 'dragging' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                onClick={() => document.getElementById('ean-file-input')?.click()}
+            >
+                <input
+                    type="file"
+                    id="ean-file-input"
                     accept=".xlsx,.xls"
-                    label="Wgraj plik z produktami"
-                    sublabel="Obsługuje formaty Excel (.xlsx, .xls)"
-                    icon="📊"
-                    isLoading={isLoading}
-                    loadingText={loadingText}
+                    className="hidden"
+                    onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
                 />
-            </Section>
+                <span className="icon">📊</span>
+                <p className="title">{file ? file.name : 'Przeciągnij plik Excel'}</p>
+                <p className="subtitle">lub kliknij aby wybrać</p>
+            </div>
 
             {/* Column Configuration */}
             {columns.length > 0 && (
-                <Section title="2. Konfiguracja kolumn">
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-sm text-text-gray block mb-2">
-                                Kolumna z głównym EAN:
-                            </label>
-                            <select
-                                value={eanColumn}
-                                onChange={(e) => setEanColumn(e.target.value)}
-                                className="w-full p-3 bg-bg-input border border-border rounded-lg text-text-white focus:outline-none focus:border-accent transition-colors"
-                            >
-                                {columns.map(col => (
-                                    <option key={col} value={col}>{col}</option>
-                                ))}
-                            </select>
-                        </div>
+                <>
+                    <div className="card">
+                        <div className="card-header">⚙️ Konfiguracja kolumn</div>
+                        <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div>
+                                <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>
+                                    Kolumna z głównym EAN:
+                                </label>
+                                <select
+                                    value={eanColumn}
+                                    onChange={(e) => setEanColumn(e.target.value)}
+                                    className="form-input"
+                                    style={{ width: '100%', padding: '0.75rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-white)' }}
+                                >
+                                    {columns.map(col => (
+                                        <option key={col} value={col}>{col}</option>
+                                    ))}
+                                </select>
+                            </div>
 
-                        <div>
-                            <label className="text-sm text-text-gray block mb-2">
-                                Kolumny do przeszukania (ukryte EAN):
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                                {columns.filter(c => c !== eanColumn).map(col => (
-                                    <button
-                                        key={col}
-                                        onClick={() => toggleSearchColumn(col)}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${searchColumns.includes(col)
-                                                ? 'bg-accent text-white border-accent'
-                                                : 'bg-bg-tertiary text-text-gray border-border hover:border-accent'
-                                            }`}
-                                    >
-                                        {col}
-                                    </button>
-                                ))}
+                            <div>
+                                <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>
+                                    Kolumny do przeszukania (ukryte EAN):
+                                </label>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    {columns.filter(c => c !== eanColumn).map(col => (
+                                        <button
+                                            key={col}
+                                            onClick={() => toggleSearchColumn(col)}
+                                            className={`filter-pill ${searchColumns.includes(col) ? 'active' : ''}`}
+                                            style={{ fontSize: '0.8rem' }}
+                                        >
+                                            {col}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="mt-6 flex gap-3 flex-wrap">
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                         <button
                             onClick={processData}
                             disabled={!eanColumn || searchColumns.length === 0 || isProcessing}
-                            className="btn btn-primary flex-1 py-3"
+                            className="btn btn-primary"
                         >
-                            {isProcessing ? '⏳ Przetwarzanie...' : '🔍 Szukaj ukrytych EAN'}
+                            🔍 Szukaj ukrytych EAN
                         </button>
                         {results.length > 0 && (
-                            <button onClick={downloadReport} className="btn btn-secondary w-full md:w-auto">
+                            <button onClick={downloadReport} className="btn btn-secondary">
                                 ⬇️ Pobierz raport Excel
                             </button>
                         )}
                     </div>
-                </Section>
+                </>
             )}
 
             {/* Results Summary */}
             {results.length > 0 && (
-                <Section title={`3. Wyniki analizy (${results.length} wierszy)`}>
-                    <div className="flex gap-4 mb-4 text-sm font-medium">
-                        <span className="text-green-400">✓ OK: {okCount}</span>
-                        <span className="text-red-400">✗ Błędy: {criticalCount}</span>
+                <div className="card">
+                    <div className="card-header">
+                        <span>📋 Wyniki analizy ({results.length} wierszy)</span>
+                        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.9rem' }}>
+                            <span style={{ color: 'var(--accent)' }}>✓ OK: {okCount}</span>
+                            <span style={{ color: '#ef4444' }}>✗ Błędy: {criticalCount}</span>
+                        </div>
                     </div>
-
-                    <div className="max-h-96 overflow-y-auto bg-bg-input rounded-lg border border-border">
-                        <table className="w-full text-sm border-collapse">
-                            <thead className="bg-bg-tertiary sticky top-0">
-                                <tr className="text-left text-text-muted border-b border-border">
-                                    <th className="p-3 font-medium">Wiersz</th>
-                                    <th className="p-3 font-medium">Główny EAN</th>
-                                    <th className="p-3 font-medium">Znalezione</th>
-                                    <th className="p-3 font-medium">Status</th>
+                    <div className="card-body" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                        <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ textAlign: 'left', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
+                                    <th style={{ padding: '0.75rem 0.5rem' }}>Wiersz</th>
+                                    <th style={{ padding: '0.75rem 0.5rem' }}>Główny EAN</th>
+                                    <th style={{ padding: '0.75rem 0.5rem' }}>Znalezione</th>
+                                    <th style={{ padding: '0.75rem 0.5rem' }}>Status</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-border">
+                            <tbody>
                                 {results.filter(r => r.status === 'KRYTYCZNY').slice(0, 50).map((r, i) => (
-                                    <tr key={i} className="hover:bg-bg-tertiary/50 transition-colors">
-                                        <td className="p-3 text-text-gray">{r.row}</td>
-                                        <td className="p-3 font-mono text-xs">{r.mainEan.slice(0, 20)}{r.mainEan.length > 20 ? '...' : ''}</td>
-                                        <td className="p-3 font-mono text-xs text-red-400">{r.foundEans.join(', ') || '-'}</td>
-                                        <td className="p-3">
-                                            <span className={`font-bold text-xs ${r.status === 'KRYTYCZNY' ? 'text-red-400' : 'text-green-400'}`}>
+                                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                                        <td style={{ padding: '0.75rem 0.5rem' }}>{r.row}</td>
+                                        <td style={{ padding: '0.75rem 0.5rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                                            {r.mainEan.slice(0, 20)}{r.mainEan.length > 20 ? '...' : ''}
+                                        </td>
+                                        <td style={{ padding: '0.75rem 0.5rem', fontFamily: 'monospace', fontSize: '0.8rem', color: '#ef4444' }}>
+                                            {r.foundEans.join(', ') || '-'}
+                                        </td>
+                                        <td style={{ padding: '0.75rem 0.5rem' }}>
+                                            <span style={{
+                                                color: r.status === 'KRYTYCZNY' ? '#ef4444' : 'var(--accent)',
+                                                fontWeight: 600
+                                            }}>
                                                 {r.status === 'KRYTYCZNY' ? '✗ BŁĄD' : '✓ OK'}
                                             </span>
                                         </td>
@@ -371,20 +386,20 @@ export default function EanChecker() {
                                 ))}
                                 {results.filter(r => r.status === 'KRYTYCZNY').length === 0 && (
                                     <tr>
-                                        <td colSpan={4} className="p-8 text-center text-green-400">
+                                        <td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: 'var(--accent)' }}>
                                             ✓ Brak błędów krytycznych!
                                         </td>
                                     </tr>
                                 )}
                             </tbody>
                         </table>
+                        {results.filter(r => r.status === 'KRYTYCZNY').length > 50 && (
+                            <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '1rem' }}>
+                                Pokazano 50 z {criticalCount} błędów. Pobierz raport Excel, aby zobaczyć wszystkie.
+                            </p>
+                        )}
                     </div>
-                    {results.filter(r => r.status === 'KRYTYCZNY').length > 50 && (
-                        <p className="text-center text-text-muted text-xs mt-4">
-                            Pokazano 50 z {criticalCount} błędów. Pobierz raport Excel, aby zobaczyć wszystkie.
-                        </p>
-                    )}
-                </Section>
+                </div>
             )}
         </div>
     );

@@ -3,9 +3,6 @@
 import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { useExcelWorker } from '@/hooks/useExcelWorker';
-import { useStats } from '../Stats';
-import { useHistory } from '../History';
-import { useNotifications } from '../Notifications';
 
 type Provider = 'google' | 'deepl' | 'libre';
 
@@ -35,11 +32,6 @@ export default function DescriptionTranslator() {
 
     // Web Worker for Excel parsing
     const { parseExcel } = useExcelWorker();
-
-    // Core hooks
-    const { recordUsage } = useStats();
-    const { addToHistory } = useHistory();
-    const { addNotification } = useNotifications();
 
     const languages = [
         { code: 'pl', name: 'Polski' },
@@ -192,22 +184,6 @@ export default function DescriptionTranslator() {
             setOutputBlob(blob);
             setResult({ translated, failed, total: rows.length });
             setProgressText('Gotowe!');
-
-            recordUsage('translator', rows.length);
-            addNotification('success', 'Tłumaczenie zakończone', `Przetłumaczono ${translated} opisów (${failed} błędów).`);
-            addToHistory({
-                tool: 'Tłumacz',
-                toolIcon: '🌍',
-                inputFiles: [file.name],
-                outputFileName: file.name.replace(/\.xlsx?$/i, '') + `_${targetLang}.xlsx`,
-                outputBlob: blob,
-                summary: `${translated}/${rows.length} przetłumaczonych (${sourceLang} → ${targetLang})`,
-                stats: {
-                    'Przetłumaczono': translated,
-                    'Błędy': failed,
-                    'Język': `${sourceLang} → ${targetLang}`
-                }
-            });
 
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Nieznany błąd');

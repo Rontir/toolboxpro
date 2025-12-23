@@ -62,15 +62,6 @@ export function Dashboard({ tools, onNavigate }: DashboardProps) {
 
     const favoriteTools = tools.filter(t => favorites.includes(t.id) && t.id !== 'dashboard');
 
-    // Smart Suggestions
-    const frequentlyUsedTools = Object.entries(stats.toolUsage)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 3)
-        .map(([id]) => tools.find(t => t.id === id))
-        .filter(Boolean) as any[];
-
-    const lastUsedTool = stats.lastUsed ? tools.find(t => t.id === stats.lastUsed) : null;
-
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         const card = e.currentTarget;
         const rect = card.getBoundingClientRect();
@@ -146,85 +137,6 @@ export function Dashboard({ tools, onNavigate }: DashboardProps) {
                 </div>
             </div>
 
-            {/* Smart Suggestions */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
-                {/* Frequently Used */}
-                {frequentlyUsedTools.length > 0 && (
-                    <section>
-                        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span>🔥</span> Często używane
-                        </h2>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            {frequentlyUsedTools.map(tool => (
-                                <div
-                                    key={tool.id}
-                                    className="card tool-card"
-                                    onClick={() => onNavigate(tool.id)}
-                                    style={{
-                                        padding: '1rem',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '1rem',
-                                        background: 'var(--bg-tertiary)'
-                                    }}
-                                >
-                                    <div style={{ fontSize: '1.5rem' }}>{tool.icon}</div>
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{tool.name}</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{stats.toolUsage[tool.id]} użyć</div>
-                                    </div>
-                                    <span style={{ color: 'var(--accent)' }}>→</span>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-                )}
-
-                {/* Recently Used */}
-                {lastUsedTool && (
-                    <section>
-                        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span>⏱️</span> Ostatnio używane
-                        </h2>
-                        <div
-                            className="card tool-card"
-                            onClick={() => onNavigate(lastUsedTool.id)}
-                            style={{
-                                padding: '1.5rem',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '1rem',
-                                background: 'linear-gradient(135deg, var(--bg-tertiary), var(--bg-card))',
-                                border: '1px solid var(--accent)',
-                                position: 'relative',
-                                overflow: 'hidden'
-                            }}
-                        >
-                            <div style={{
-                                position: 'absolute',
-                                top: '-10px',
-                                right: '-10px',
-                                fontSize: '4rem',
-                                opacity: 0.1,
-                                transform: 'rotate(15deg)'
-                            }}>
-                                {lastUsedTool.icon}
-                            </div>
-                            <div style={{ fontSize: '2.5rem' }}>{lastUsedTool.icon}</div>
-                            <div>
-                                <div style={{ fontWeight: 700, fontSize: '1.25rem', marginBottom: '0.25rem' }}>{lastUsedTool.name}</div>
-                                <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Kontynuuj pracę z tym narzędziem</div>
-                            </div>
-                            <button className="btn btn-primary" style={{ alignSelf: 'flex-start', padding: '0.5rem 1rem', fontSize: '0.875rem' }}>
-                                Otwórz ponownie
-                            </button>
-                        </div>
-                    </section>
-                )}
-            </div>
-
             {/* Favorites */}
             {favoriteTools.length > 0 && (
                 <section style={{ marginBottom: '3rem' }}>
@@ -263,7 +175,7 @@ export function Dashboard({ tools, onNavigate }: DashboardProps) {
                     <span>🚀</span> Wszystkie narzędzia
                 </h2>
                 <div className="tools-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1.5rem' }}>
-                    {tools.filter(t => !favorites.includes(t.id) && t.id !== 'dashboard' && !frequentlyUsedTools.find(ft => ft.id === t.id)).map(tool => (
+                    {tools.filter(t => !favorites.includes(t.id) && t.id !== 'dashboard').map(tool => (
                         <div
                             key={tool.id}
                             className="card tool-card"

@@ -3,12 +3,6 @@
 import { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { useExcelWorker } from '@/hooks/useExcelWorker';
-import { useStats } from '../Stats';
-import { useHistory } from '../History';
-import { useNotifications } from '../Notifications';
-import { ToolHeader } from '../ui/ToolHeader';
-import { FileUpload } from '../ui/FileUpload';
-import { Section } from '../ui/Section';
 
 // Comprehensive emoji regex pattern
 const EMOJI_REGEX = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{231A}-\u{231B}]|[\u{23E9}-\u{23F3}]|[\u{23F8}-\u{23FA}]|[\u{25AA}-\u{25AB}]|[\u{25B6}]|[\u{25C0}]|[\u{25FB}-\u{25FE}]|[\u{2614}-\u{2615}]|[\u{2648}-\u{2653}]|[\u{267F}]|[\u{2693}]|[\u{26A1}]|[\u{26AA}-\u{26AB}]|[\u{26BD}-\u{26BE}]|[\u{26C4}-\u{26C5}]|[\u{26CE}]|[\u{26D4}]|[\u{26EA}]|[\u{26F2}-\u{26F3}]|[\u{26F5}]|[\u{26FA}]|[\u{26FD}]|[\u{2702}]|[\u{2705}]|[\u{2708}-\u{270D}]|[\u{270F}]|[\u{2712}]|[\u{2714}]|[\u{2716}]|[\u{271D}]|[\u{2721}]|[\u{2728}]|[\u{2733}-\u{2734}]|[\u{2744}]|[\u{2747}]|[\u{274C}]|[\u{274E}]|[\u{2753}-\u{2755}]|[\u{2757}]|[\u{2763}-\u{2764}]|[\u{2795}-\u{2797}]|[\u{27A1}]|[\u{27B0}]|[\u{27BF}]|[\u{2934}-\u{2935}]|[\u{2B05}-\u{2B07}]|[\u{2B1B}-\u{2B1C}]|[\u{2B50}]|[\u{2B55}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]|[\u{FE00}-\u{FE0F}]|[\u{200D}]/gu;
@@ -48,11 +42,6 @@ export default function EmojiRemover() {
     // Web Worker for Excel parsing
     const { parseExcel } = useExcelWorker();
 
-    // Core hooks
-    const { recordUsage } = useStats();
-    const { addToHistory } = useHistory();
-    const { addNotification } = useNotifications();
-
     const removeEmojisFromText = (text: string): { cleaned: string; count: number } => {
         const matches = text.match(EMOJI_REGEX) || [];
         let cleaned = text.replace(EMOJI_REGEX, '');
@@ -73,9 +62,19 @@ export default function EmojiRemover() {
         setStats({ removed: count, original: input.length });
     };
 
-    const handleFilesSelected = (files: File[]) => {
-        const file = files[0];
+    const handleFileDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
         if (file && file.name.match(/\.xlsx?$/i)) {
+            setExcelFile(file);
+            setExcelStats(null);
+            setProcessedWorkbook(null);
+        }
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
             setExcelFile(file);
             setExcelStats(null);
             setProcessedWorkbook(null);
@@ -140,22 +139,6 @@ export default function EmojiRemover() {
                 totalEmojisRemoved
             });
             setProgress(100);
-
-            recordUsage('emoji-remover', totalRows);
-            addNotification('success', 'Usuwanie zakończone', `Usunięto ${totalEmojisRemoved} emotek z ${totalRows} wierszy.`);
-            addToHistory({
-                tool: 'Usuń emotki',
-                toolIcon: '🧹',
-                inputFiles: [excelFile.name],
-                outputFileName: excelFile.name.replace(/\.xlsx?$/i, '_bez_emotek.xlsx'),
-                outputBlob: null,
-                summary: `${totalEmojisRemoved} emotek usuniętych z ${totalRows} wierszy`,
-                stats: {
-                    'Wierszy': totalRows,
-                    'Emotek': totalEmojisRemoved,
-                    'Kolumn': columnsProcessed.length
-                }
-            });
         } catch (error) {
             console.error('Error processing Excel:', error);
             alert('Błąd podczas przetwarzania pliku Excel');
@@ -205,93 +188,97 @@ export default function EmojiRemover() {
     };
 
     return (
-        <div className="flex flex-col gap-6">
-            <ToolHeader
-                title="Emoji Remover"
-                description="Usuń emotki z tekstu lub plików Excel. Wyczyść zbędne znaki i przygotuj dane do dalszej obróbki."
-                icon="🧹"
-            />
-
+        <div className="max-w-4xl" style={{ display: 'flex', flexDirection: 'column', gap: '24px', position: 'relative' }}>
             {/* Loading Overlay */}
             {isLoading && (
                 <div className="upload-progress-overlay">
-                    <div className="upload-progress-spinner" />
-                    <p className="text-white text-lg mt-5">{loadingText}</p>
+                    <div className="spinner"></div>
+                    <p>{loadingText}</p>
                 </div>
             )}
 
-            {/* Mode Toggle */}
-            <Section title="📂 Tryb pracy">
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => { setTab('text'); resetAll(); }}
-                        className={`btn ${tab === 'text' ? 'btn-primary' : 'btn-secondary'}`}
-                    >
-                        📝 Tekst / HTML
-                    </button>
-                    <button
-                        onClick={() => { setTab('excel'); resetAll(); }}
-                        className={`btn ${tab === 'excel' ? 'btn-primary' : 'btn-secondary'}`}
-                    >
-                        📊 Plik Excel
-                    </button>
-                </div>
-            </Section>
+            {/* Tabs */}
+            <div className="filter-pills">
+                <button
+                    onClick={() => { setTab('text'); resetAll(); }}
+                    className={`filter-pill ${tab === 'text' ? 'active' : ''}`}
+                >
+                    📝 Tekst / HTML
+                </button>
+                <button
+                    onClick={() => { setTab('excel'); resetAll(); }}
+                    className={`filter-pill ${tab === 'excel' ? 'active' : ''}`}
+                >
+                    📊 Plik Excel
+                </button>
+            </div>
 
             {/* Text Tab */}
             {tab === 'text' && (
                 <>
                     {/* Stats */}
                     {stats.removed > 0 && (
-                        <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-sm flex items-center gap-4">
-                            <span>✅ Usunięto <strong className="text-accent">{stats.removed}</strong> emotek</span>
-                            <span className="text-text-muted">|</span>
-                            <span className="text-text-muted">
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '16px',
+                            padding: '12px 16px',
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            borderRadius: '8px',
+                            fontSize: '14px'
+                        }}>
+                            <span>✅ Usunięto <strong style={{ color: 'var(--accent)' }}>{stats.removed}</strong> emotek</span>
+                            <span style={{ color: 'var(--text-muted)' }}>|</span>
+                            <span style={{ color: 'var(--text-muted)' }}>
                                 {stats.original} → {output.length} znaków
                             </span>
                         </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Input */}
-                        <Section
-                            title="📝 Wejście"
-                            actions={
-                                <button onClick={pasteFromClipboard} className="text-xs text-accent hover:text-accent-hover transition-colors flex items-center gap-1">
+                    {/* Text areas */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div className="card">
+                            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>📝 Wejście</span>
+                                <button onClick={pasteFromClipboard} style={{ fontSize: '12px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>
                                     📋 Wklej
                                 </button>
-                            }
-                        >
-                            <textarea
-                                className="w-full h-64 p-3 bg-bg-input border border-border rounded-lg text-sm font-mono resize-none text-text-white focus:outline-none focus:border-accent transition-colors"
-                                placeholder="Wklej tekst z emotkami... 🎉✨🔥&#10;&#10;Przykład:&#10;Świetny produkt! 🔥 Polecam!&#10;<p>Opis 🎁 z HTML</p>"
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                            />
-                        </Section>
+                            </div>
+                            <div className="card-body">
+                                <textarea
+                                    className="form-input"
+                                    style={{ width: '100%', height: '250px', resize: 'none', fontFamily: 'monospace', fontSize: '13px' }}
+                                    placeholder="Wklej tekst z emotkami... 🎉✨🔥&#10;&#10;Przykład:&#10;Świetny produkt! 🔥 Polecam!&#10;<p>Opis 🎁 z HTML</p>"
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                />
+                            </div>
+                        </div>
 
-                        {/* Output */}
-                        <Section
-                            title="✅ Wyjście"
-                            actions={
-                                output && (
-                                    <button onClick={copyOutput} className="text-xs text-accent hover:text-accent-hover transition-colors flex items-center gap-1">
+                        <div className="card">
+                            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>✅ Wyjście</span>
+                                {output && (
+                                    <button onClick={copyOutput} style={{ fontSize: '12px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>
                                         📋 Kopiuj
                                     </button>
-                                )
-                            }
-                        >
-                            <textarea
-                                className="w-full h-64 p-3 bg-bg-input border border-border rounded-lg text-sm font-mono resize-none text-text-white focus:outline-none"
-                                readOnly
-                                value={output}
-                                placeholder="Tutaj pojawi się tekst bez emotek..."
-                            />
-                        </Section>
+                                )}
+                            </div>
+                            <div className="card-body">
+                                <textarea
+                                    className="form-input"
+                                    style={{ width: '100%', height: '250px', resize: 'none', fontFamily: 'monospace', fontSize: '13px' }}
+                                    readOnly
+                                    value={output}
+                                    placeholder="Tutaj pojawi się tekst bez emotek..."
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     {/* Actions */}
-                    <div className="flex gap-3">
+                    <div style={{ display: 'flex', gap: '12px' }}>
                         <button onClick={removeEmojis} disabled={!input} className="btn btn-primary">
                             🧹 Usuń emotki
                         </button>
@@ -306,70 +293,93 @@ export default function EmojiRemover() {
             {tab === 'excel' && (
                 <>
                     {/* Upload Zone */}
-                    <Section title="📊 Plik Excel">
-                        <FileUpload
-                            onFilesSelect={handleFilesSelected}
+                    <div
+                        className="upload-zone"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={handleFileDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                    >
+                        <input
+                            ref={fileInputRef}
+                            type="file"
                             accept=".xlsx,.xls"
-                            label="Wgraj plik Excel"
-                            sublabel="Obsługujemy formaty .xlsx i .xls"
-                            icon="📊"
-                            isLoading={isLoading}
-                            loadingText={loadingText}
+                            className="hidden"
+                            onChange={handleFileSelect}
                         />
+                        <span className="icon">📊</span>
+                        <p className="title">{excelFile?.name || 'Przeciągnij plik Excel'}</p>
+                        <p className="subtitle">lub kliknij aby wybrać (.xlsx, .xls)</p>
+                    </div>
 
-                        {/* File Info */}
-                        {excelFile && !excelStats && (
-                            <div className="mt-4 p-3 bg-bg-tertiary rounded-lg border border-border text-sm text-text-gray">
-                                📁 <strong>{excelFile.name}</strong> ({(excelFile.size / 1024).toFixed(1)} KB)
-                            </div>
-                        )}
-                    </Section>
+                    {/* File Info */}
+                    {excelFile && !excelStats && (
+                        <div style={{
+                            padding: '12px 16px',
+                            background: 'var(--bg-tertiary)',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border)',
+                            fontSize: '14px',
+                            color: 'var(--text-gray)'
+                        }}>
+                            📁 <strong>{excelFile.name}</strong> ({(excelFile.size / 1024).toFixed(1)} KB)
+                        </div>
+                    )}
 
                     {/* Results */}
                     {excelStats && (
-                        <Section title="✅ Przetworzono pomyślnie">
-                            <div className="grid grid-cols-3 gap-4 mb-4">
-                                <div className="text-center p-3 bg-bg-card rounded-lg">
-                                    <div className="text-2xl font-bold text-accent">{excelStats.totalRows}</div>
-                                    <div className="text-xs text-text-muted">wierszy</div>
+                        <div className="card" style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                            <div className="card-header">✅ Przetworzono pomyślnie</div>
+                            <div className="card-body">
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+                                    <div style={{ textAlign: 'center', padding: '12px', background: 'var(--bg-card)', borderRadius: '8px' }}>
+                                        <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent)' }}>{excelStats.totalRows}</div>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>wierszy</div>
+                                    </div>
+                                    <div style={{ textAlign: 'center', padding: '12px', background: 'var(--bg-card)', borderRadius: '8px' }}>
+                                        <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent)' }}>{excelStats.totalEmojisRemoved}</div>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>emotek usunięto</div>
+                                    </div>
+                                    <div style={{ textAlign: 'center', padding: '12px', background: 'var(--bg-card)', borderRadius: '8px' }}>
+                                        <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent)' }}>{excelStats.columnsProcessed.length}</div>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>kolumn</div>
+                                    </div>
                                 </div>
-                                <div className="text-center p-3 bg-bg-card rounded-lg">
-                                    <div className="text-2xl font-bold text-accent">{excelStats.totalEmojisRemoved}</div>
-                                    <div className="text-xs text-text-muted">emotek usunięto</div>
-                                </div>
-                                <div className="text-center p-3 bg-bg-card rounded-lg">
-                                    <div className="text-2xl font-bold text-accent">{excelStats.columnsProcessed.length}</div>
-                                    <div className="text-xs text-text-muted">kolumn</div>
-                                </div>
+                                {excelStats.columnsProcessed.length > 0 && (
+                                    <div style={{ marginTop: '12px', fontSize: '13px', color: 'var(--text-muted)' }}>
+                                        Przetworzone kolumny: <strong>{excelStats.columnsProcessed.join(', ')}</strong>
+                                    </div>
+                                )}
                             </div>
-                            {excelStats.columnsProcessed.length > 0 && (
-                                <div className="text-xs text-text-muted">
-                                    Przetworzone kolumny: <strong>{excelStats.columnsProcessed.join(', ')}</strong>
-                                </div>
-                            )}
-                        </Section>
+                        </div>
                     )}
 
                     {/* Progress */}
                     {processing && (
-                        <div className="p-4 bg-bg-tertiary rounded-lg border border-border">
-                            <div className="flex justify-between mb-2">
-                                <span className="text-sm text-text-gray">Przetwarzanie...</span>
-                                <span className="text-sm text-accent font-medium">{progress}%</span>
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '14px', color: 'var(--text-gray)' }}>Przetwarzanie...</span>
+                                <span style={{ fontSize: '14px', color: 'var(--accent)', fontWeight: 500 }}>{progress}%</span>
                             </div>
-                            <div className="w-full h-2 bg-bg-input rounded-full overflow-hidden">
-                                <div className="h-full bg-accent transition-all duration-300" style={{ width: `${progress}%` }} />
+                            <div className="progress-bar">
+                                <div className="progress-fill" style={{ width: `${progress}%` }} />
                             </div>
                         </div>
                     )}
 
                     {/* Info */}
-                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-sm text-text-gray">
+                    <div style={{
+                        padding: '12px 16px',
+                        background: 'rgba(59, 130, 246, 0.1)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        fontSize: '13px',
+                        color: 'var(--text-gray)'
+                    }}>
                         💡 Automatycznie szukane kolumny: <strong>Tytuł, Opis, Nazwa, Title, Description, Name</strong>
                     </div>
 
                     {/* Actions */}
-                    <div className="flex gap-3">
+                    <div style={{ display: 'flex', gap: '12px' }}>
                         <button
                             onClick={processExcel}
                             disabled={!excelFile || processing}
@@ -390,28 +400,31 @@ export default function EmojiRemover() {
             )}
 
             {/* Options */}
-            <Section title="⚙️ Opcje czyszczenia">
-                <div className="flex flex-wrap gap-6">
-                    <label className="flex items-center gap-2 text-sm cursor-pointer text-text-gray hover:text-text-white transition-colors">
-                        <input
-                            type="checkbox"
-                            checked={options.cleanDoubleSpaces}
-                            onChange={(e) => setOptions({ ...options, cleanDoubleSpaces: e.target.checked })}
-                            className="accent-accent w-4 h-4"
-                        />
-                        Usuń podwójne spacje
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer text-text-gray hover:text-text-white transition-colors">
-                        <input
-                            type="checkbox"
-                            checked={options.trimLines}
-                            onChange={(e) => setOptions({ ...options, trimLines: e.target.checked })}
-                            className="accent-accent w-4 h-4"
-                        />
-                        Przytnij linie (trim)
-                    </label>
+            <div className="card">
+                <div className="card-header">⚙️ Opcje czyszczenia</div>
+                <div className="card-body">
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={options.cleanDoubleSpaces}
+                                onChange={(e) => setOptions({ ...options, cleanDoubleSpaces: e.target.checked })}
+                                style={{ accentColor: 'var(--accent)' }}
+                            />
+                            Usuń podwójne spacje
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={options.trimLines}
+                                onChange={(e) => setOptions({ ...options, trimLines: e.target.checked })}
+                                style={{ accentColor: 'var(--accent)' }}
+                            />
+                            Przytnij linie (trim)
+                        </label>
+                    </div>
                 </div>
-            </Section>
+            </div>
         </div>
     );
 }

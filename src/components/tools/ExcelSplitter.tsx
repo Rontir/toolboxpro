@@ -3,12 +3,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useDroppedFile } from '@/components/DroppedFileContext';
 import { useExcelWorker } from '@/hooks/useExcelWorker';
-import { useUndoRedo, UndoRedoButtons } from '@/hooks/useUndoRedo';
-import { PresetSelector } from '@/components/BatchPresets';
-import { useNotifications } from '@/components/Notifications';
-import { ToolHeader } from '../ui/ToolHeader';
-import { FileUpload } from '../ui/FileUpload';
-import { Section } from '../ui/Section';
 
 type TabType = 'split' | 'merge';
 
@@ -22,30 +16,16 @@ export default function ExcelSplitter() {
     const [tab, setTab] = useState<TabType>('split');
     const [file, setFile] = useState<File | null>(null);
     const [mergeFiles, setMergeFiles] = useState<File[]>([]);
-
-    // Settings with Undo/Redo
-    const {
-        state: settings,
-        setState: setSettings,
-        undo,
-        redo,
-        canUndo,
-        canRedo,
-        undoCount,
-        redoCount
-    } = useUndoRedo({
-        rowsPerFile: 1000,
-        addSourceColumn: true,
-        sortAlphabetically: true,
-        removeDuplicates: false
-    });
-
+    const [rowsPerFile, setRowsPerFile] = useState(1000);
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
     const [results, setResults] = useState<SplitResult[]>([]);
     const [mergeResult, setMergeResult] = useState<{ url: string; name: string; rows: number; cols: number } | null>(null);
     const [totalRows, setTotalRows] = useState(0);
-    const [previewData, setPreviewData] = useState<{ headers: string[]; rows: any[] } | null>(null);
+    // Merge options
+    const [addSourceColumn, setAddSourceColumn] = useState(true);
+    const [sortAlphabetically, setSortAlphabetically] = useState(true);
+    const [removeDuplicates, setRemoveDuplicates] = useState(false);
     // Loading state for file upload
     const [isLoading, setIsLoading] = useState(false);
     const [loadingText, setLoadingText] = useState('');
@@ -54,40 +34,6 @@ export default function ExcelSplitter() {
 
     // Web Worker for Excel parsing
     const { parseExcel } = useExcelWorker();
-    const { addNotification } = useNotifications();
-
-    // Keyboard shortcuts for Undo/Redo
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-                if (e.shiftKey) {
-                    e.preventDefault();
-                    redo();
-                } else {
-                    e.preventDefault();
-                    undo();
-                }
-            } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-                e.preventDefault();
-                redo();
-            } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
-                // Trigger processing on Enter if files are present and not processing
-                const activeElement = document.activeElement;
-                const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA';
-                if (!isInput && !isProcessing) {
-                    if (tab === 'split' && file) {
-                        e.preventDefault();
-                        processSplit();
-                    } else if (tab === 'merge' && mergeFiles.length >= 2) {
-                        e.preventDefault();
-                        processMerge();
-                    }
-                }
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo]);
 
     // Check for dropped file on mount
     useEffect(() => {
@@ -97,23 +43,25 @@ export default function ExcelSplitter() {
         }
     }, []);
 
-    const handleFilesSelected = (files: File[]) => {
-        if (files.length === 0) return;
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        const droppedFiles = Array.from(e.dataTransfer.files).filter(f => f.name.match(/\.xlsx?$/i));
+        if (droppedFiles.length === 0) return;
 
         setIsLoading(true);
-        setLoadingText(`📂 Wczytywanie ${files.length} plików...`);
+        setLoadingText(`📂 Wczytywanie ${droppedFiles.length} plików...`);
 
         requestAnimationFrame(() => {
             setTimeout(() => {
-                if (tab === 'split') {
-                    setFile(files[0]);
+                if (tab === 'split' && droppedFiles[0]) {
+                    setFile(droppedFiles[0]);
                 } else if (tab === 'merge') {
-                    setMergeFiles(prev => [...prev, ...files]);
+                    setMergeFiles(prev => [...prev, ...droppedFiles]);
                 }
                 setIsLoading(false);
             }, 100);
         });
-    };
+    }, [tab]);
 
     // Read row count when file is selected (using Web Worker)
     useEffect(() => {
@@ -126,21 +74,19 @@ export default function ExcelSplitter() {
         setLoadingText(`📊 Liczenie wierszy...`);
 
         parseExcel(file)
-            .then(({ headers, rows, totalRows: rowsCount }) => {
-                setTotalRows(rowsCount);
-                setPreviewData({ headers, rows: rows.slice(0, 5) });
+            .then(({ totalRows: rows }) => {
+                setTotalRows(rows);
             })
             .catch(() => {
                 setTotalRows(0);
-                setPreviewData(null);
             })
             .finally(() => {
                 setIsLoading(false);
             });
     }, [file, parseExcel]);
 
-    const estimatedChunks = totalRows > 0 && settings.rowsPerFile > 0
-        ? Math.ceil(totalRows / settings.rowsPerFile)
+    const estimatedChunks = totalRows > 0 && rowsPerFile > 0
+        ? Math.ceil(totalRows / rowsPerFile)
         : 0;
 
     const processSplit = async () => {
@@ -163,8 +109,8 @@ export default function ExcelSplitter() {
             const rows = data.slice(1);
             const chunks: unknown[][][] = [];
 
-            for (let i = 0; i < rows.length; i += settings.rowsPerFile) {
-                chunks.push(rows.slice(i, i + settings.rowsPerFile));
+            for (let i = 0; i < rows.length; i += rowsPerFile) {
+                chunks.push(rows.slice(i, i + rowsPerFile));
             }
 
             setProgress(50);
@@ -191,7 +137,6 @@ export default function ExcelSplitter() {
 
             setResults(newResults);
             setProgress(100);
-            addNotification('success', 'Podział zakończony', `Pomyślnie podzielono plik na ${newResults.length} części.`);
         } catch (e) {
             console.error('Error splitting file:', e);
         }
@@ -210,7 +155,7 @@ export default function ExcelSplitter() {
 
             // Sort files if needed
             let filesToMerge = [...mergeFiles];
-            if (settings.sortAlphabetically) {
+            if (sortAlphabetically) {
                 filesToMerge.sort((a, b) => a.name.localeCompare(b.name));
             }
 
@@ -224,7 +169,7 @@ export default function ExcelSplitter() {
                 const data = XLSX.utils.sheet_to_json(sheet) as Record<string, unknown>[];
 
                 // Add source column if enabled
-                if (settings.addSourceColumn) {
+                if (addSourceColumn) {
                     data.forEach(row => {
                         row['_ŹRÓDŁO'] = filesToMerge[i].name;
                     });
@@ -241,7 +186,7 @@ export default function ExcelSplitter() {
 
             // Remove duplicates if enabled
             let finalData = allData;
-            if (settings.removeDuplicates) {
+            if (removeDuplicates) {
                 const seen = new Set<string>();
                 finalData = allData.filter(row => {
                     const key = JSON.stringify(row);
@@ -276,7 +221,6 @@ export default function ExcelSplitter() {
             });
 
             setProgress(100);
-            addNotification('success', 'Połączenie zakończone', `Pomyślnie połączono ${mergeFiles.length} plików.`);
         } catch (e) {
             console.error('Error merging files:', e);
         }
@@ -338,172 +282,142 @@ export default function ExcelSplitter() {
         }
     };
 
+    // Helper for file input with loading
+    const handleFileSelect = (files: FileList | null, isMerge: boolean) => {
+        if (!files || files.length === 0) return;
+        const excelFiles = Array.from(files).filter(f => f.name.match(/\.xlsx?$/i));
+        if (excelFiles.length === 0) return;
+
+        setIsLoading(true);
+        setLoadingText(`📂 Wczytywanie ${excelFiles.length} plików...`);
+
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                if (isMerge) {
+                    setMergeFiles(prev => [...prev, ...excelFiles]);
+                } else {
+                    setFile(excelFiles[0]);
+                }
+                setIsLoading(false);
+            }, 100);
+        });
+    };
 
     return (
-        <div className="flex flex-col gap-6">
-            <ToolHeader
-                title="Excel Splitter & Merger"
-                description="Dziel duże pliki Excel na mniejsze części lub łącz wiele plików w jeden. Zachowaj nagłówki i strukturę danych."
-                icon="✂️"
-            />
-
+        <div className="max-w-4xl" style={{ display: 'flex', flexDirection: 'column', gap: '24px', position: 'relative' }}>
             {/* Loading Overlay */}
             {isLoading && (
                 <div className="upload-progress-overlay">
                     <div className="upload-progress-spinner" />
-                    <p className="text-white text-lg mt-5">{loadingText}</p>
+                    <p style={{ color: 'white', fontSize: '18px', marginTop: '20px' }}>{loadingText}</p>
                 </div>
             )}
-
-            {/* Mode Toggle */}
-            <Section title="📂 Tryb pracy">
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => { setTab('split'); setResults([]); setMergeResult(null); }}
-                        className={`btn ${tab === 'split' ? 'btn-primary' : 'btn-secondary'}`}
-                    >
-                        ✂️ Dzielenie
-                    </button>
-                    <button
-                        onClick={() => { setTab('merge'); setResults([]); setMergeResult(null); }}
-                        className={`btn ${tab === 'merge' ? 'btn-primary' : 'btn-secondary'}`}
-                    >
-                        🔗 Łączenie
-                    </button>
-                </div>
-            </Section>
+            {/* Tabs */}
+            <div className="filter-pills">
+                <button
+                    onClick={() => { setTab('split'); setResults([]); setMergeResult(null); }}
+                    className={`filter-pill ${tab === 'split' ? 'active' : ''}`}
+                >
+                    ✂️ Dzielenie
+                </button>
+                <button
+                    onClick={() => { setTab('merge'); setResults([]); setMergeResult(null); }}
+                    className={`filter-pill ${tab === 'merge' ? 'active' : ''}`}
+                >
+                    🔗 Łączenie
+                </button>
+            </div>
 
             {/* Split Tab */}
             {tab === 'split' && (
                 <>
                     {/* Upload Zone */}
-                    <Section title="📊 Plik do podziału">
-                        <FileUpload
-                            onFilesSelect={handleFilesSelected}
+                    <div
+                        className="upload-zone"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={handleDrop}
+                        onClick={() => document.getElementById('excel-input')?.click()}
+                    >
+                        <input
+                            type="file"
+                            id="excel-input"
                             accept=".xlsx,.xls"
-                            label="Wgraj plik Excel"
-                            sublabel="Obsługujemy formaty .xlsx i .xls"
-                            icon="📊"
-                            isLoading={isLoading}
-                            loadingText={loadingText}
+                            className="hidden"
+                            onChange={(e) => handleFileSelect(e.target.files, false)}
                         />
-                    </Section>
-
-                    {/* File Preview */}
-                    {file && previewData && (
-                        <Section
-                            title="👁️ Podgląd danych"
-                            actions={
-                                <span className="text-xs text-text-muted">
-                                    Pierwsze 5 wierszy z {previewData.headers.length} kolumn
-                                </span>
-                            }
-                        >
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left border-collapse">
-                                    <thead className="bg-bg-tertiary text-text-gray uppercase text-xs">
-                                        <tr>
-                                            {previewData.headers.map((h, i) => (
-                                                <th key={i} className="px-4 py-3 border-b border-border whitespace-nowrap">
-                                                    {h}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {previewData.rows.map((row, i) => (
-                                            <tr key={i} className="border-b border-border hover:bg-bg-tertiary/50 transition-colors">
-                                                {previewData.headers.map((h, j) => (
-                                                    <td key={j} className="px-4 py-3 text-text-gray whitespace-nowrap max-w-[200px] overflow-hidden text-ellipsis">
-                                                        {String(row[h] ?? '')}
-                                                    </td>
-                                                ))}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </Section>
-                    )}
+                        <span className="icon">📊</span>
+                        <p className="title">{file?.name || 'Przeciągnij plik Excel'}</p>
+                        <p className="subtitle">lub kliknij aby wybrać</p>
+                    </div>
 
                     {/* Options */}
-                    <Section
-                        title="⚙️ Opcje podziału"
-                        actions={
-                            <div className="flex items-center gap-4">
-                                <UndoRedoButtons
-                                    canUndo={canUndo}
-                                    canRedo={canRedo}
-                                    onUndo={undo}
-                                    onRedo={redo}
-                                    undoCount={undoCount}
-                                    redoCount={redoCount}
-                                />
-                                <PresetSelector
-                                    toolId="excel-splitter-split"
-                                    toolIcon="✂️"
-                                    currentSettings={settings}
-                                    onSelect={(s) => setSettings(s as any, 'Apply preset')}
-                                />
-                            </div>
-                        }
-                    >
-                        <div className="flex flex-wrap items-center gap-4">
-                            <div className="flex items-center gap-2">
-                                <label className="text-sm text-text-gray">Wierszy na plik:</label>
+                    <div className="card">
+                        <div className="card-header">⚙️ Opcje podziału</div>
+                        <div className="card-body">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                                <label style={{ fontSize: '14px', color: 'var(--text-gray)' }}>Wierszy na plik:</label>
                                 <input
                                     type="number"
-                                    className="w-32 p-2 bg-bg-input border border-border rounded-lg text-sm text-text-white focus:outline-none focus:border-accent transition-colors"
-                                    value={settings.rowsPerFile}
-                                    onChange={e => setSettings({ ...settings, rowsPerFile: Number(e.target.value) }, 'Change rows per file')}
+                                    className="form-input"
+                                    style={{ width: '120px' }}
+                                    value={rowsPerFile}
+                                    onChange={e => setRowsPerFile(Number(e.target.value))}
                                     min={1}
                                 />
-                            </div>
-                            <div className="flex gap-2">
-                                {[100, 500, 1000, 5000].map(n => (
-                                    <button
-                                        key={n}
-                                        onClick={() => setSettings({ ...settings, rowsPerFile: n }, `Set rows to ${n}`)}
-                                        className={`px-3 py-1 rounded-full text-xs transition-colors ${settings.rowsPerFile === n
-                                            ? 'bg-accent text-white'
-                                            : 'bg-bg-tertiary text-text-gray hover:bg-bg-tertiary/80'
-                                            }`}
-                                    >
-                                        {n}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {/* Live chunk count preview */}
-                            {totalRows > 0 && (
-                                <div className="flex items-center gap-2 px-3 py-1.5 bg-bg-tertiary rounded-lg border border-border text-sm">
-                                    <span className="text-text-muted">
-                                        📊 {totalRows.toLocaleString()} wierszy
-                                    </span>
-                                    <span className="text-text-muted">→</span>
-                                    <span className="text-green-500 font-bold">
-                                        📁 {estimatedChunks} {estimatedChunks === 1 ? 'plik' : 'plików'}
-                                    </span>
+                                <div className="filter-pills">
+                                    {[100, 500, 1000, 5000].map(n => (
+                                        <button
+                                            key={n}
+                                            onClick={() => setRowsPerFile(n)}
+                                            className={`filter-pill ${rowsPerFile === n ? 'active' : ''}`}
+                                        >
+                                            {n}
+                                        </button>
+                                    ))}
                                 </div>
-                            )}
+                                {/* Live chunk count preview */}
+                                {totalRows > 0 && (
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '6px 12px',
+                                        background: 'var(--bg-tertiary)',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--border)'
+                                    }}>
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
+                                            📊 {totalRows.toLocaleString()} wierszy
+                                        </span>
+                                        <span style={{ color: 'var(--text-muted)' }}>→</span>
+                                        <span style={{
+                                            color: '#1db954',
+                                            fontWeight: 700,
+                                            fontSize: '14px'
+                                        }}>
+                                            📁 {estimatedChunks} {estimatedChunks === 1 ? 'plik' : 'plików'}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </Section>
+                    </div>
 
                     {/* Progress */}
                     {isProcessing && (
-                        <div className="p-4 bg-bg-tertiary rounded-lg border border-border">
-                            <div className="flex justify-between mb-2">
-                                <span className="text-sm text-text-gray">Dzielenie...</span>
-                                <span className="text-sm text-accent font-medium">{progress}%</span>
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '14px', color: 'var(--text-gray)' }}>Dzielenie...</span>
+                                <span style={{ fontSize: '14px', color: 'var(--accent)', fontWeight: 500 }}>{progress}%</span>
                             </div>
-                            <div className="w-full h-2 bg-bg-input rounded-full overflow-hidden">
-                                <div className="h-full bg-accent transition-all duration-300" style={{ width: `${progress}%` }} />
+                            <div className="progress-bar">
+                                <div className="progress-fill" style={{ width: `${progress}%` }} />
                             </div>
                         </div>
                     )}
 
                     {/* Actions */}
-                    <div className="flex gap-3">
+                    <div style={{ display: 'flex', gap: '12px' }}>
                         <button onClick={processSplit} disabled={!file || isProcessing} className="btn btn-primary">
                             {isProcessing ? `⏳ ${progress}%` : '✂️ Podziel plik'}
                         </button>
@@ -516,24 +430,27 @@ export default function ExcelSplitter() {
 
                     {/* Results */}
                     {results.length > 0 && (
-                        <Section title={`✅ Podzielone pliki (${results.length})`}>
-                            <div className="flex flex-col gap-2">
-                                {results.map((r, i) => (
-                                    <div key={i} className="flex items-center justify-between p-3 bg-bg-card rounded-lg border border-border hover:border-accent/50 transition-colors">
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-2xl">📄</span>
-                                            <div>
-                                                <p className="text-sm font-medium text-text-white">{r.name}</p>
-                                                <p className="text-xs text-text-muted">{r.rowCount} wierszy</p>
+                        <div className="card">
+                            <div className="card-header">✅ Podzielone pliki ({results.length})</div>
+                            <div className="card-body">
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {results.map((r, i) => (
+                                        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'var(--bg-card)', borderRadius: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                <span style={{ fontSize: '24px' }}>📄</span>
+                                                <div>
+                                                    <p style={{ fontSize: '14px', fontWeight: 500 }}>{r.name}</p>
+                                                    <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{r.rowCount} wierszy</p>
+                                                </div>
                                             </div>
+                                            <a href={r.url} download={r.name} className="btn btn-secondary" style={{ padding: '8px 12px' }}>
+                                                ⬇️
+                                            </a>
                                         </div>
-                                        <a href={r.url} download={r.name} className="btn btn-secondary text-sm py-1 px-3">
-                                            ⬇️
-                                        </a>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
-                        </Section>
+                        </div>
                     )}
                 </>
             )}
@@ -542,118 +459,110 @@ export default function ExcelSplitter() {
             {tab === 'merge' && (
                 <>
                     {/* Upload Zone */}
-                    <Section title="📚 Pliki do połączenia">
-                        <FileUpload
-                            onFilesSelect={handleFilesSelected}
+                    <div
+                        className="upload-zone"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={handleDrop}
+                        onClick={() => document.getElementById('excel-merge-input')?.click()}
+                    >
+                        <input
+                            type="file"
+                            id="excel-merge-input"
                             accept=".xlsx,.xls"
-                            multiple={true}
-                            label="Wgraj pliki Excel"
-                            sublabel="Przeciągnij wiele plików (.xlsx, .xls)"
-                            icon="📚"
-                            isLoading={isLoading}
-                            loadingText={loadingText}
+                            multiple
+                            className="hidden"
+                            onChange={(e) => handleFileSelect(e.target.files, true)}
                         />
-                    </Section>
+                        <span className="icon">📚</span>
+                        <p className="title">
+                            {mergeFiles.length > 0 ? `${mergeFiles.length} plików do połączenia` : 'Przeciągnij pliki Excel'}
+                        </p>
+                        <p className="subtitle">lub kliknij aby wybrać</p>
+                    </div>
 
                     {/* File List */}
                     {mergeFiles.length > 0 && (
-                        <Section
-                            title={`📁 Lista plików (${mergeFiles.length})`}
-                            actions={
-                                <button onClick={() => setMergeFiles([])} className="text-xs text-red-500 hover:text-red-400 transition-colors">
+                        <div className="card">
+                            <div className="card-header">
+                                <span>📁 Pliki do połączenia ({mergeFiles.length})</span>
+                                <button onClick={() => setMergeFiles([])} style={{ fontSize: '12px', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>
                                     Usuń wszystkie
                                 </button>
-                            }
-                        >
-                            <div className="flex flex-col gap-2">
-                                {mergeFiles.map((f, i) => (
-                                    <div key={i} className="flex items-center justify-between p-2 bg-bg-card rounded-lg border border-border">
-                                        <span className="text-sm text-text-gray">{f.name}</span>
-                                        <button
-                                            onClick={() => setMergeFiles(prev => prev.filter((_, j) => j !== i))}
-                                            className="text-red-500 hover:text-red-400 transition-colors p-1"
-                                        >
-                                            ✕
-                                        </button>
-                                    </div>
-                                ))}
                             </div>
-                        </Section>
+                            <div className="card-body">
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    {mergeFiles.map((f, i) => (
+                                        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--bg-card)', borderRadius: '6px' }}>
+                                            <span style={{ fontSize: '14px' }}>{f.name}</span>
+                                            <button
+                                                onClick={() => setMergeFiles(prev => prev.filter((_, j) => j !== i))}
+                                                style={{ color: '#ef4444', fontSize: '12px', background: 'none', border: 'none', cursor: 'pointer' }}
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
                     )}
 
                     {/* Merge Options */}
                     {mergeFiles.length > 0 && (
-                        <Section
-                            title="⚙️ Opcje łączenia"
-                            actions={
-                                <div className="flex items-center gap-4">
-                                    <UndoRedoButtons
-                                        canUndo={canUndo}
-                                        canRedo={canRedo}
-                                        onUndo={undo}
-                                        onRedo={redo}
-                                        undoCount={undoCount}
-                                        redoCount={redoCount}
-                                    />
-                                    <PresetSelector
-                                        toolId="excel-splitter-merge"
-                                        toolIcon="🔗"
-                                        currentSettings={settings}
-                                        onSelect={(s) => setSettings(s as any, 'Apply preset')}
-                                    />
+                        <div className="card">
+                            <div className="card-header">⚙️ Opcje łączenia</div>
+                            <div className="card-body">
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={addSourceColumn}
+                                            onChange={(e) => setAddSourceColumn(e.target.checked)}
+                                            style={{ accentColor: 'var(--accent)' }}
+                                        />
+                                        Dodaj kolumnę ze źródłem (nazwa pliku)
+                                    </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={sortAlphabetically}
+                                            onChange={(e) => setSortAlphabetically(e.target.checked)}
+                                            style={{ accentColor: 'var(--accent)' }}
+                                        />
+                                        Sortuj pliki alfabetycznie przed łączeniem
+                                    </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={removeDuplicates}
+                                            onChange={(e) => setRemoveDuplicates(e.target.checked)}
+                                            style={{ accentColor: 'var(--accent)' }}
+                                        />
+                                        Usuń duplikaty wierszy
+                                    </label>
                                 </div>
-                            }
-                        >
-                            <div className="flex flex-col gap-3">
-                                <label className="flex items-center gap-2 text-sm cursor-pointer text-text-gray hover:text-text-white transition-colors">
-                                    <input
-                                        type="checkbox"
-                                        checked={settings.addSourceColumn}
-                                        onChange={(e) => setSettings({ ...settings, addSourceColumn: e.target.checked }, e.target.checked ? 'Enable source column' : 'Disable source column')}
-                                        className="accent-accent w-4 h-4"
-                                    />
-                                    Dodaj kolumnę ze źródłem (nazwa pliku)
-                                </label>
-                                <label className="flex items-center gap-2 text-sm cursor-pointer text-text-gray hover:text-text-white transition-colors">
-                                    <input
-                                        type="checkbox"
-                                        checked={settings.sortAlphabetically}
-                                        onChange={(e) => setSettings({ ...settings, sortAlphabetically: e.target.checked }, e.target.checked ? 'Enable alpha sort' : 'Disable alpha sort')}
-                                        className="accent-accent w-4 h-4"
-                                    />
-                                    Sortuj pliki alfabetycznie przed łączeniem
-                                </label>
-                                <label className="flex items-center gap-2 text-sm cursor-pointer text-text-gray hover:text-text-white transition-colors">
-                                    <input
-                                        type="checkbox"
-                                        checked={settings.removeDuplicates}
-                                        onChange={(e) => setSettings({ ...settings, removeDuplicates: e.target.checked }, e.target.checked ? 'Enable duplicate removal' : 'Disable duplicate removal')}
-                                        className="accent-accent w-4 h-4"
-                                    />
-                                    Usuń duplikaty wierszy
-                                </label>
+                                <div style={{ marginTop: '12px', padding: '8px 12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                                    ℹ️ Różne nagłówki zostaną automatycznie zunifikowane
+                                </div>
                             </div>
-                            <div className="mt-3 p-2 bg-blue-500/10 rounded-lg text-xs text-text-muted border border-blue-500/20">
-                                ℹ️ Różne nagłówki zostaną automatycznie zunifikowane
-                            </div>
-                        </Section>
+                        </div>
                     )}
 
                     {/* Progress */}
                     {isProcessing && (
-                        <div className="p-4 bg-bg-tertiary rounded-lg border border-border">
-                            <div className="flex justify-between mb-2">
-                                <span className="text-sm text-text-gray">Łączenie...</span>
-                                <span className="text-sm text-accent font-medium">{progress}%</span>
+                        <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                <span style={{ fontSize: '14px', color: 'var(--text-gray)' }}>Łączenie...</span>
+                                <span style={{ fontSize: '14px', color: 'var(--accent)', fontWeight: 500 }}>{progress}%</span>
                             </div>
-                            <div className="w-full h-2 bg-bg-input rounded-full overflow-hidden">
-                                <div className="h-full bg-accent transition-all duration-300" style={{ width: `${progress}%` }} />
+                            <div className="progress-bar">
+                                <div className="progress-fill" style={{ width: `${progress}%` }} />
                             </div>
                         </div>
                     )}
 
                     {/* Actions */}
-                    <div className="flex gap-3">
+                    <div style={{ display: 'flex', gap: '12px' }}>
                         <button onClick={processMerge} disabled={mergeFiles.length < 2 || isProcessing} className="btn btn-primary">
                             {isProcessing ? `⏳ ${progress}%` : '🔗 Połącz pliki'}
                         </button>
@@ -665,36 +574,6 @@ export default function ExcelSplitter() {
                     </div>
                 </>
             )}
-
-            {/* Tips Section */}
-            <Section title="💡 Porady i wskazówki">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div>
-                        <h4 className="text-sm font-semibold mb-2 text-accent">
-                            🚀 Duże pliki
-                        </h4>
-                        <p className="text-xs text-text-muted leading-relaxed">
-                            Narzędzie używa Web Workerów, dzięki czemu interfejs pozostaje responsywny nawet przy plikach mających setki tysięcy wierszy.
-                        </p>
-                    </div>
-                    <div>
-                        <h4 className="text-sm font-semibold mb-2 text-accent">
-                            🔗 Inteligentne łączenie
-                        </h4>
-                        <p className="text-xs text-text-muted leading-relaxed">
-                            Przy łączeniu plików o różnych kolumnach, narzędzie automatycznie zunifikuje nagłówki i wstawi puste wartości tam, gdzie danych brakuje.
-                        </p>
-                    </div>
-                    <div>
-                        <h4 className="text-sm font-semibold mb-2 text-accent">
-                            🧹 Usuwanie duplikatów
-                        </h4>
-                        <p className="text-xs text-text-muted leading-relaxed">
-                            Opcja usuwania duplikatów porównuje całe wiersze. Jest to szczególnie przydatne przy scalaniu baz danych z wielu źródeł.
-                        </p>
-                    </div>
-                </div>
-            </Section>
         </div>
     );
 }

@@ -1,8 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { useStats } from '../Stats';
-import { useUndoRedo, useUndoRedoKeyboard, UndoRedoButtons } from '@/hooks/useUndoRedo';
+import { useState, useMemo } from 'react';
 
 type CalculatorMode = 'margin' | 'discount' | 'vat';
 
@@ -13,53 +11,28 @@ const VAT_RATES = [
     { value: 0, label: '0%' },
 ];
 
-interface Settings {
-    mode: CalculatorMode;
-    purchasePrice: string;
-    sellingPrice: string;
-    targetMargin: string;
-    originalPrice: string;
-    discountPercent: string;
-    netPrice: string;
-    vatRate: number;
-    vatDirection: 'add' | 'remove';
-}
-
-const DEFAULT_SETTINGS: Settings = {
-    mode: 'margin',
-    purchasePrice: '',
-    sellingPrice: '',
-    targetMargin: '',
-    originalPrice: '',
-    discountPercent: '',
-    netPrice: '',
-    vatRate: 23,
-    vatDirection: 'add',
-};
-
 export default function PriceCalculator() {
-    const {
-        state: settings,
-        setState: setSettings,
-        undo,
-        redo,
-        canUndo,
-        canRedo,
-        undoCount,
-        redoCount
-    } = useUndoRedo<Settings>(DEFAULT_SETTINGS);
+    const [mode, setMode] = useState<CalculatorMode>('margin');
 
-    useUndoRedoKeyboard(undo, redo);
+    // Margin mode
+    const [purchasePrice, setPurchasePrice] = useState<string>('');
+    const [sellingPrice, setSellingPrice] = useState<string>('');
+    const [targetMargin, setTargetMargin] = useState<string>('');
 
-    // Stats tracking
-    const { recordUsage } = useStats();
-    const hasTrackedRef = { current: false };
+    // Discount mode
+    const [originalPrice, setOriginalPrice] = useState<string>('');
+    const [discountPercent, setDiscountPercent] = useState<string>('');
+
+    // VAT mode
+    const [netPrice, setNetPrice] = useState<string>('');
+    const [vatRate, setVatRate] = useState<number>(23);
+    const [vatDirection, setVatDirection] = useState<'add' | 'remove'>('add');
 
     // Margin calculations
     const marginResults = useMemo(() => {
-        const purchase = parseFloat(settings.purchasePrice) || 0;
-        const selling = parseFloat(settings.sellingPrice) || 0;
-        const target = parseFloat(settings.targetMargin) || 0;
+        const purchase = parseFloat(purchasePrice) || 0;
+        const selling = parseFloat(sellingPrice) || 0;
+        const target = parseFloat(targetMargin) || 0;
 
         if (purchase > 0 && selling > 0) {
             const profit = selling - purchase;
@@ -74,12 +47,12 @@ export default function PriceCalculator() {
         }
 
         return null;
-    }, [settings.purchasePrice, settings.sellingPrice, settings.targetMargin]);
+    }, [purchasePrice, sellingPrice, targetMargin]);
 
     // Discount calculations
     const discountResults = useMemo(() => {
-        const original = parseFloat(settings.originalPrice) || 0;
-        const discount = parseFloat(settings.discountPercent) || 0;
+        const original = parseFloat(originalPrice) || 0;
+        const discount = parseFloat(discountPercent) || 0;
 
         if (original > 0 && discount > 0) {
             const savings = original * (discount / 100);
@@ -87,31 +60,23 @@ export default function PriceCalculator() {
             return { final, savings, discount };
         }
         return null;
-    }, [settings.originalPrice, settings.discountPercent]);
+    }, [originalPrice, discountPercent]);
 
     // VAT calculations
     const vatResults = useMemo(() => {
-        const net = parseFloat(settings.netPrice) || 0;
+        const net = parseFloat(netPrice) || 0;
         if (net <= 0) return null;
 
-        if (settings.vatDirection === 'add') {
-            const vatAmount = net * (settings.vatRate / 100);
+        if (vatDirection === 'add') {
+            const vatAmount = net * (vatRate / 100);
             const gross = net + vatAmount;
             return { net, vatAmount, gross };
         } else {
-            const netFromGross = net / (1 + settings.vatRate / 100);
+            const netFromGross = net / (1 + vatRate / 100);
             const vatAmount = net - netFromGross;
             return { net: netFromGross, vatAmount, gross: net };
         }
-    }, [settings.netPrice, settings.vatRate, settings.vatDirection]);
-
-    // Track usage when results are calculated
-    useEffect(() => {
-        if ((marginResults || discountResults || vatResults) && !hasTrackedRef.current) {
-            recordUsage('calculator', 1);
-            hasTrackedRef.current = true;
-        }
-    }, [marginResults, discountResults, vatResults, recordUsage]);
+    }, [netPrice, vatRate, vatDirection]);
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(value);
@@ -121,34 +86,26 @@ export default function PriceCalculator() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Mode Selection */}
             <div className="card">
-                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="card-header">
                     <span>💰 Tryb kalkulatora</span>
-                    <UndoRedoButtons
-                        canUndo={canUndo}
-                        canRedo={canRedo}
-                        onUndo={undo}
-                        onRedo={redo}
-                        undoCount={undoCount}
-                        redoCount={redoCount}
-                    />
                 </div>
                 <div className="card-body">
                     <div className="filter-pills">
                         <button
-                            onClick={() => setSettings({ ...settings, mode: 'margin' }, 'Zmiana trybu na Marża')}
-                            className={`filter-pill ${settings.mode === 'margin' ? 'active' : ''}`}
+                            onClick={() => setMode('margin')}
+                            className={`filter-pill ${mode === 'margin' ? 'active' : ''}`}
                         >
                             📊 Marża / Narzut
                         </button>
                         <button
-                            onClick={() => setSettings({ ...settings, mode: 'discount' }, 'Zmiana trybu na Rabat')}
-                            className={`filter-pill ${settings.mode === 'discount' ? 'active' : ''}`}
+                            onClick={() => setMode('discount')}
+                            className={`filter-pill ${mode === 'discount' ? 'active' : ''}`}
                         >
                             🏷️ Rabat
                         </button>
                         <button
-                            onClick={() => setSettings({ ...settings, mode: 'vat' }, 'Zmiana trybu na VAT')}
-                            className={`filter-pill ${settings.mode === 'vat' ? 'active' : ''}`}
+                            onClick={() => setMode('vat')}
+                            className={`filter-pill ${mode === 'vat' ? 'active' : ''}`}
                         >
                             🧾 VAT
                         </button>
@@ -157,7 +114,7 @@ export default function PriceCalculator() {
             </div>
 
             {/* Margin Mode */}
-            {settings.mode === 'margin' && (
+            {mode === 'margin' && (
                 <div className="card">
                     <div className="card-header">
                         <span>📊 Kalkulator Marży</span>
@@ -170,8 +127,8 @@ export default function PriceCalculator() {
                                 </label>
                                 <input
                                     type="number"
-                                    value={settings.purchasePrice}
-                                    onChange={(e) => setSettings({ ...settings, purchasePrice: e.target.value }, 'Zmiana ceny zakupu')}
+                                    value={purchasePrice}
+                                    onChange={(e) => setPurchasePrice(e.target.value)}
                                     placeholder="0.00"
                                     className="input"
                                     style={{ width: '100%' }}
@@ -183,8 +140,8 @@ export default function PriceCalculator() {
                                 </label>
                                 <input
                                     type="number"
-                                    value={settings.sellingPrice}
-                                    onChange={(e) => setSettings({ ...settings, sellingPrice: e.target.value }, 'Zmiana ceny sprzedaży')}
+                                    value={sellingPrice}
+                                    onChange={(e) => setSellingPrice(e.target.value)}
                                     placeholder="0.00"
                                     className="input"
                                     style={{ width: '100%' }}
@@ -200,8 +157,8 @@ export default function PriceCalculator() {
                             </label>
                             <input
                                 type="number"
-                                value={settings.targetMargin}
-                                onChange={(e) => setSettings({ ...settings, targetMargin: e.target.value }, 'Zmiana docelowej marży')}
+                                value={targetMargin}
+                                onChange={(e) => setTargetMargin(e.target.value)}
                                 placeholder="np. 30"
                                 className="input"
                                 style={{ width: '100%' }}
@@ -252,7 +209,7 @@ export default function PriceCalculator() {
             )}
 
             {/* Discount Mode */}
-            {settings.mode === 'discount' && (
+            {mode === 'discount' && (
                 <div className="card">
                     <div className="card-header">
                         <span>🏷️ Kalkulator Rabatu</span>
@@ -265,8 +222,8 @@ export default function PriceCalculator() {
                                 </label>
                                 <input
                                     type="number"
-                                    value={settings.originalPrice}
-                                    onChange={(e) => setSettings({ ...settings, originalPrice: e.target.value }, 'Zmiana ceny oryginalnej')}
+                                    value={originalPrice}
+                                    onChange={(e) => setOriginalPrice(e.target.value)}
                                     placeholder="0.00"
                                     className="input"
                                     style={{ width: '100%' }}
@@ -278,8 +235,8 @@ export default function PriceCalculator() {
                                 </label>
                                 <input
                                     type="number"
-                                    value={settings.discountPercent}
-                                    onChange={(e) => setSettings({ ...settings, discountPercent: e.target.value }, 'Zmiana procentu rabatu')}
+                                    value={discountPercent}
+                                    onChange={(e) => setDiscountPercent(e.target.value)}
                                     placeholder="np. 20"
                                     className="input"
                                     style={{ width: '100%' }}
@@ -317,7 +274,7 @@ export default function PriceCalculator() {
             )}
 
             {/* VAT Mode */}
-            {settings.mode === 'vat' && (
+            {mode === 'vat' && (
                 <div className="card">
                     <div className="card-header">
                         <span>🧾 Kalkulator VAT</span>
@@ -329,14 +286,14 @@ export default function PriceCalculator() {
                             </label>
                             <div className="filter-pills">
                                 <button
-                                    onClick={() => setSettings({ ...settings, vatDirection: 'add' }, 'Zmiana kierunku na Netto → Brutto')}
-                                    className={`filter-pill ${settings.vatDirection === 'add' ? 'active' : ''}`}
+                                    onClick={() => setVatDirection('add')}
+                                    className={`filter-pill ${vatDirection === 'add' ? 'active' : ''}`}
                                 >
                                     Netto → Brutto
                                 </button>
                                 <button
-                                    onClick={() => setSettings({ ...settings, vatDirection: 'remove' }, 'Zmiana kierunku na Brutto → Netto')}
-                                    className={`filter-pill ${settings.vatDirection === 'remove' ? 'active' : ''}`}
+                                    onClick={() => setVatDirection('remove')}
+                                    className={`filter-pill ${vatDirection === 'remove' ? 'active' : ''}`}
                                 >
                                     Brutto → Netto
                                 </button>
@@ -346,12 +303,12 @@ export default function PriceCalculator() {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                             <div>
                                 <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                                    {settings.vatDirection === 'add' ? 'Cena netto' : 'Cena brutto'}
+                                    {vatDirection === 'add' ? 'Cena netto' : 'Cena brutto'}
                                 </label>
                                 <input
                                     type="number"
-                                    value={settings.netPrice}
-                                    onChange={(e) => setSettings({ ...settings, netPrice: e.target.value }, 'Zmiana ceny')}
+                                    value={netPrice}
+                                    onChange={(e) => setNetPrice(e.target.value)}
                                     placeholder="0.00"
                                     className="input"
                                     style={{ width: '100%' }}
@@ -365,8 +322,8 @@ export default function PriceCalculator() {
                                     {VAT_RATES.map(rate => (
                                         <button
                                             key={rate.value}
-                                            onClick={() => setSettings({ ...settings, vatRate: rate.value }, `Zmiana stawki VAT na ${rate.label}`)}
-                                            className={`filter-pill ${settings.vatRate === rate.value ? 'active' : ''}`}
+                                            onClick={() => setVatRate(rate.value)}
+                                            className={`filter-pill ${vatRate === rate.value ? 'active' : ''}`}
                                         >
                                             {rate.label}
                                         </button>
@@ -393,7 +350,7 @@ export default function PriceCalculator() {
                                     </div>
                                 </div>
                                 <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>VAT ({settings.vatRate}%)</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>VAT ({vatRate}%)</div>
                                     <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f59e0b' }}>
                                         +{formatCurrency(vatResults.vatAmount)}
                                     </div>

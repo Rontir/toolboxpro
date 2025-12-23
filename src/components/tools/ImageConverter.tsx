@@ -5,14 +5,7 @@ import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 import { useHistory } from '@/components/History';
 import { useDroppedFile } from '@/components/DroppedFileContext';
 import { useStats } from '@/components/Stats';
-import { useUndoRedo, UndoRedoButtons } from '@/hooks/useUndoRedo';
 import JSZip from 'jszip';
-import { useETAEstimator, ETADisplay } from '@/hooks/useETA';
-import { PresetSelector } from '@/components/BatchPresets';
-import { useNotifications } from '@/components/Notifications';
-import { ToolHeader } from '../ui/ToolHeader';
-import { FileUpload } from '../ui/FileUpload';
-import { Section } from '../ui/Section';
 
 interface FilePreview {
     file: File;
@@ -31,67 +24,24 @@ const FORMATS = ['PNG', 'JPG', 'WEBP', 'GIF', 'BMP'];
 
 export default function ImageConverter() {
     const [files, setFiles] = useState<FilePreview[]>([]);
-    const {
-        state: settings,
-        setState: setSettings,
-        undo,
-        redo,
-        canUndo,
-        canRedo,
-        undoCount,
-        redoCount
-    } = useUndoRedo({
-        format: 'WEBP',
-        quality: 85,
-        namingOption: 'keep' as 'keep' | 'random',
-        packAsZip: true
-    });
-
+    const [format, setFormat] = useState('WEBP');
+    const [quality, setQuality] = useState(85);
     const [converted, setConverted] = useState<ConvertedImage[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [loadingText, setLoadingText] = useState('');
+    const [namingOption, setNamingOption] = useState<'keep' | 'random'>('keep');
     const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('files');
     const [compareIndex, setCompareIndex] = useState<number | null>(null);
 
-    const eta = useETAEstimator();
+    // ZIP export option
+    const [packAsZip, setPackAsZip] = useState(true);
 
     const { addToHistory } = useHistory();
     const { consumeDroppedFile } = useDroppedFile();
     const { recordUsage } = useStats();
-    const { addNotification } = useNotifications();
-
-    // Keyboard shortcuts for Undo/Redo
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-                if (e.shiftKey) {
-                    e.preventDefault();
-                    redo();
-                } else {
-                    e.preventDefault();
-                    undo();
-                }
-            } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-                e.preventDefault();
-                redo();
-            } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
-                // Trigger conversion on Enter if files are present and not processing
-                const activeElement = document.activeElement;
-                const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA';
-                if (!isInput && files.length > 0 && !isProcessing) {
-                    e.preventDefault();
-                    convertImages();
-                }
-            } else if (e.key === 'Escape') {
-                setCompareIndex(null);
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo]);
 
     // Check for dropped file on mount
     useEffect(() => {
@@ -271,18 +221,39 @@ export default function ImageConverter() {
     };
 
     // Wrapper to show loading before processing files
-    const handleFilesSelected = async (files: File[]) => {
-        if (files.length === 0) return;
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = Array.from(e.target.files || []);
+        if (selectedFiles.length === 0) return;
 
         setIsLoading(true);
-        setLoadingText(`📂 Wczytywanie ${files.length} plików...`);
+        setLoadingText(`📂 Wczytywanie ${selectedFiles.length} plików...`);
 
         requestAnimationFrame(() => {
             setTimeout(() => {
                 setLoadingText(`📸 Tworzenie podglądów...`);
                 requestAnimationFrame(() => {
                     setTimeout(() => {
-                        addFilesWithZip(files);
+                        addFilesWithZip(selectedFiles);
+                        setIsLoading(false);
+                    }, 50);
+                });
+            }, 50);
+        });
+    };
+
+    const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = Array.from(e.target.files || []);
+        if (selectedFiles.length === 0) return;
+
+        setIsLoading(true);
+        setLoadingText(`📁 Wczytywanie folderu (${selectedFiles.length} plików)...`);
+
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                setLoadingText(`📸 Tworzenie podglądów...`);
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        addFilesWithZip(selectedFiles);
                         setIsLoading(false);
                     }, 50);
                 });
@@ -302,7 +273,7 @@ export default function ImageConverter() {
     };
 
     const getOutputName = (originalName: string, fmt: string) => {
-        if (settings.namingOption === 'random') {
+        if (namingOption === 'random') {
             return `${generateRandomName()}.${fmt}`;
         }
         return originalName.replace(/\.[^.]+$/, `.${fmt}`);
@@ -312,14 +283,12 @@ export default function ImageConverter() {
         if (files.length === 0) return;
         setIsProcessing(true);
         setConverted([]);
-        eta.start(files.length);
         const results: ConvertedImage[] = [];
-        const fmt = settings.format.toLowerCase();
+        const fmt = format.toLowerCase();
 
         for (let i = 0; i < files.length; i++) {
             const { file, preview } = files[i];
             setProgress(Math.round(((i + 1) / files.length) * 100));
-            eta.update(i + 1);
 
             try {
                 const img = await loadImage(file);
@@ -331,7 +300,7 @@ export default function ImageConverter() {
 
                 const mimeType = fmt === 'jpg' ? 'image/jpeg' : `image/${fmt}`;
                 const blob = await new Promise<Blob>((resolve) => {
-                    canvas.toBlob(b => resolve(b!), mimeType, settings.quality / 100);
+                    canvas.toBlob(b => resolve(b!), mimeType, quality / 100);
                 });
 
                 results.push({
@@ -348,7 +317,6 @@ export default function ImageConverter() {
 
         setConverted(results);
         setProgress(100);
-        eta.complete();
         setIsProcessing(false);
 
         // Add to history
@@ -361,7 +329,7 @@ export default function ImageConverter() {
                 inputFiles: files.map(f => f.file.name),
                 outputFileName: results.length === 1 ? results[0].name : `${results.length}_obrazów.zip`,
                 outputBlob: null,
-                summary: `${results.length} obrazów → ${settings.format}`,
+                summary: `${results.length} obrazów → ${format}`,
                 stats: {
                     'Plików': results.length,
                     'Oszczędność': `${Math.round((1 - totalNewSize / totalOrigSize) * 100)}%`
@@ -370,8 +338,6 @@ export default function ImageConverter() {
 
             // Update stats counter
             recordUsage('converter', results.length);
-
-            addNotification('success', 'Konwersja zakończona', `Pomyślnie skonwertowano ${results.length} obrazów.`);
         }
     };
 
@@ -388,7 +354,7 @@ export default function ImageConverter() {
         if (converted.length === 0) return;
 
         // If only 1 file OR ZIP mode is off, download individually
-        if (converted.length === 1 || !settings.packAsZip) {
+        if (converted.length === 1 || !packAsZip) {
             converted.forEach(img => {
                 const a = document.createElement('a');
                 a.href = img.url;
@@ -454,13 +420,7 @@ export default function ImageConverter() {
     const totalConverted = converted.reduce((a, c) => a + c.newSize, 0);
 
     return (
-        <div className="flex flex-col gap-6">
-            <ToolHeader
-                title="Konwerter Obrazów"
-                description="Konwertuj zdjęcia pomiędzy formatami (JPG, PNG, WEBP, GIF, BMP). Obsługuje konwersję wsadową i zmianę rozmiaru."
-                icon="🖼️"
-            />
-
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Loading/Processing Overlay */}
             {(isProcessing || isLoading) && (
                 <div className="upload-progress-overlay">
@@ -480,303 +440,321 @@ export default function ImageConverter() {
                     )}
                 </div>
             )}
-
-            <ETADisplay {...eta} />
-
             {/* Upload Zone */}
-            <Section
-                actions={
-                    files.length > 0 && (
+            <div
+                className={`upload-zone ${files.length > 0 ? 'has-files' : ''} ${isDragging ? 'dragging' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                onClick={() => {
+                    if (uploadMode === 'files') {
+                        document.getElementById('img-input')?.click();
+                    } else {
+                        document.getElementById('folder-input')?.click();
+                    }
+                }}
+            >
+                <input
+                    type="file"
+                    id="img-input"
+                    accept="image/*,.zip"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileSelect}
+                />
+                <input
+                    type="file"
+                    id="folder-input"
+                    // @ts-expect-error webkitdirectory is not in types
+                    webkitdirectory=""
+                    multiple
+                    className="hidden"
+                    onChange={handleFolderSelect}
+                />
+                <span className="icon">🖼️</span>
+                <p className="title">
+                    {files.length > 0 ? `${files.length} obrazów wybranych` : 'Przeciągnij obrazy lub folder tutaj'}
+                </p>
+                <p className="subtitle" style={{ marginBottom: '1rem' }}>lub wybierz poniżej</p>
+
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                        onClick={() => { setUploadMode('files'); document.getElementById('img-input')?.click(); }}
+                        className={`btn ${uploadMode === 'files' ? 'btn-primary' : 'btn-secondary'}`}
+                    >
+                        🖼️ Wybierz pliki
+                    </button>
+                    <button
+                        onClick={() => { setUploadMode('folder'); document.getElementById('folder-input')?.click(); }}
+                        className={`btn ${uploadMode === 'folder' ? 'btn-primary' : 'btn-secondary'}`}
+                    >
+                        📁 Wybierz folder
+                    </button>
+                    {files.length > 0 && (
                         <button
                             onClick={() => {
                                 setFiles([]);
                                 setConverted([]);
                             }}
-                            className="text-sm text-red-500 hover:text-red-400 transition-colors flex items-center gap-1"
+                            className="btn btn-secondary"
+                            style={{ background: 'var(--bg-tertiary)' }}
                         >
-                            🗑️ Wyczyść wszystko
+                            🗑️ Wyczyść
                         </button>
-                    )
-                }
-            >
-                <div className="flex justify-end mb-4">
-                    <div className="flex gap-2 bg-bg-tertiary p-1 rounded-lg">
-                        <button
-                            onClick={() => setUploadMode('files')}
-                            className={`px-3 py-1.5 rounded-md text-sm transition-all ${uploadMode === 'files' ? 'bg-accent text-black font-medium shadow-lg' : 'text-text-muted hover:text-text-white'}`}
-                        >
-                            Pliki
-                        </button>
-                        <button
-                            onClick={() => setUploadMode('folder')}
-                            className={`px-3 py-1.5 rounded-md text-sm transition-all ${uploadMode === 'folder' ? 'bg-accent text-black font-medium shadow-lg' : 'text-text-muted hover:text-text-white'}`}
-                        >
-                            Folder
-                        </button>
-                    </div>
+                    )}
                 </div>
-
-                <FileUpload
-                    onFilesSelect={handleFilesSelected}
-                    accept="image/*,.zip"
-                    multiple={true}
-                    directory={uploadMode === 'folder'}
-                    label={uploadMode === 'folder' ? "Wybierz folder z obrazami" : "Wgraj obrazy"}
-                    sublabel="Obsługujemy JPG, PNG, WEBP, GIF, BMP. Możesz wgrać wiele plików naraz."
-                    icon={uploadMode === 'folder' ? "📁" : "🖼️"}
-                    isLoading={isLoading}
-                    loadingText={loadingText}
-                />
-            </Section>
+            </div>
 
             {/* File Preview Grid */}
             {files.length > 0 && (
-                <Section
-                    title={`📁 Pliki (${files.length})`}
-                    actions={
-                        <span className="text-sm text-text-muted">
+                <div className="card">
+                    <div className="card-header">
+                        <span>📁 Pliki ({files.length})</span>
+                        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
                             {formatBytes(totalOriginal)}
                         </span>
-                    }
-                >
-                    <div className="file-grid">
-                        {files.slice(0, 50).map((f, i) => (
-                            <div key={i} className="file-item group" onClick={() => removeFile(i)}>
-                                <img src={f.preview} alt={f.file.name} />
-                                <div className="file-overlay flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button className="btn-icon danger rounded-full bg-white/10 backdrop-blur-sm p-2">
-                                        ✕
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                        {files.length > 50 && (
-                            <div className="file-item flex items-center justify-center bg-bg-card text-text-muted text-sm">
-                                +{files.length - 50} więcej
-                            </div>
-                        )}
                     </div>
-                </Section>
+                    <div className="card-body">
+                        <div className="file-grid">
+                            {files.slice(0, 50).map((f, i) => (
+                                <div key={i} className="file-item" onClick={() => removeFile(i)}>
+                                    <img src={f.preview} alt={f.file.name} />
+                                    <div className="file-overlay">
+                                        <span style={{ fontSize: '1.25rem' }}>✕</span>
+                                    </div>
+                                </div>
+                            ))}
+                            {files.length > 50 && (
+                                <div className="file-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-card)' }}>
+                                    <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>+{files.length - 50} więcej</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             )}
 
-            {/* Presets */}
-            <Section
-                title="📋 Presety i Historia zmian"
-                actions={
-                    <UndoRedoButtons
-                        canUndo={canUndo}
-                        canRedo={canRedo}
-                        onUndo={undo}
-                        onRedo={redo}
-                        undoCount={undoCount}
-                        redoCount={redoCount}
-                    />
-                }
-            >
-                <PresetSelector
-                    toolId="image-converter"
-                    toolIcon="🖼️"
-                    onSelect={(s) => setSettings(s as any, 'Apply preset')}
-                    currentSettings={settings}
-                />
-            </Section>
-
-            {/* Settings Section */}
-            <Section title="⚙️ Ustawienia konwersji">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <div className="text-sm text-text-muted mb-2">Format wyjściowy</div>
-                        <div className="filter-pills">
-                            {FORMATS.map(f => (
-                                <button
-                                    key={f}
-                                    onClick={() => setSettings({ ...settings, format: f }, `Change format to ${f}`)}
-                                    className={`filter-pill ${settings.format === f ? 'active' : ''}`}
-                                >
-                                    {f}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <div>
-                        <div className="text-sm text-text-muted mb-2">Nazewnictwo plików</div>
-                        <div className="flex flex-col gap-2">
-                            <label className={`flex items-center gap-2 text-sm cursor-pointer ${settings.namingOption === 'keep' ? 'text-accent' : 'text-text-gray'}`}>
-                                <input
-                                    type="radio"
-                                    name="naming"
-                                    checked={settings.namingOption === 'keep'}
-                                    onChange={() => setSettings({ ...settings, namingOption: 'keep' }, 'Set naming to Keep')}
-                                    className="accent-accent"
-                                />
-                                Zachowaj nazwy
-                            </label>
-                            <label className={`flex items-center gap-2 text-sm cursor-pointer ${settings.namingOption === 'random' ? 'text-accent' : 'text-text-gray'}`}>
-                                <input
-                                    type="radio"
-                                    name="naming"
-                                    checked={settings.namingOption === 'random'}
-                                    onChange={() => setSettings({ ...settings, namingOption: 'random' }, 'Set naming to Random')}
-                                    className="accent-accent"
-                                />
-                                Losowe nazwy
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mt-6">
-                    <div className="flex justify-between mb-2">
-                        <span className="text-sm text-text-muted">Jakość</span>
-                        <span className="text-sm text-accent font-semibold">{settings.quality}%</span>
-                    </div>
-                    <input
-                        type="range"
-                        min={10}
-                        max={100}
-                        value={settings.quality}
-                        onChange={e => setSettings({ ...settings, quality: Number(e.target.value) }, 'Change quality')}
-                        className="w-full accent-accent"
-                    />
-                </div>
-
-                {/* Progress Bar */}
-                {isProcessing && (
-                    <div className="mt-4">
-                        <div className="flex justify-between mb-2">
-                            <span className="text-text-gray">Konwersja...</span>
-                            <span className="text-accent font-semibold">{progress}%</span>
-                        </div>
-                        <div className="progress-bar">
-                            <div className="progress-fill" style={{ width: `${progress}%` }} />
-                        </div>
-                    </div>
-                )}
-
-                {/* Main Actions */}
-                <div className="flex gap-3 flex-wrap items-center mt-6">
-                    <button
-                        onClick={convertImages}
-                        disabled={files.length === 0 || isProcessing}
-                        className="btn btn-primary"
-                    >
-                        {isProcessing ? `⏳ ${progress}%` : '🔄 Konwertuj'}
-                    </button>
-                    {converted.length > 0 && (
-                        <>
-                            <button onClick={downloadAll} className="btn btn-secondary" disabled={isLoading}>
-                                {settings.packAsZip && converted.length > 1 ? '📦 Pobierz ZIP' : '⬇️ Pobierz'} ({converted.length})
+            {/* Format Selection */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                    <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>Format wyjściowy</div>
+                    <div className="filter-pills">
+                        {FORMATS.map(f => (
+                            <button
+                                key={f}
+                                onClick={() => setFormat(f)}
+                                className={`filter-pill ${format === f ? 'active' : ''}`}
+                            >
+                                {f}
                             </button>
-                            {converted.length > 1 && (
-                                <label className="flex items-center gap-2 text-sm text-text-muted cursor-pointer ml-2">
-                                    <input
-                                        type="checkbox"
-                                        checked={settings.packAsZip}
-                                        onChange={(e) => setSettings({ ...settings, packAsZip: e.target.checked }, e.target.checked ? 'Enable ZIP packing' : 'Disable ZIP packing')}
-                                        className="accent-accent"
-                                    />
-                                    Pakuj do ZIP
-                                </label>
-                            )}
-                        </>
-                    )}
+                        ))}
+                    </div>
                 </div>
-            </Section>
+                <div>
+                    <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>Nazewnictwo plików</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer', color: namingOption === 'keep' ? 'var(--accent)' : 'var(--text-gray)' }}>
+                            <input
+                                type="radio"
+                                name="naming"
+                                checked={namingOption === 'keep'}
+                                onChange={() => setNamingOption('keep')}
+                                style={{ accentColor: 'var(--accent)' }}
+                            />
+                            Zachowaj nazwy
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer', color: namingOption === 'random' ? 'var(--accent)' : 'var(--text-gray)' }}>
+                            <input
+                                type="radio"
+                                name="naming"
+                                checked={namingOption === 'random'}
+                                onChange={() => setNamingOption('random')}
+                                style={{ accentColor: 'var(--accent)' }}
+                            />
+                            Losowe nazwy
+                        </label>
+                    </div>
+                </div>
+            </div>
 
-            {/* Results Section */}
+            {/* Quality Slider */}
+            <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Jakość</span>
+                    <span style={{ fontSize: '0.875rem', color: 'var(--accent)', fontWeight: 600 }}>{quality}%</span>
+                </div>
+                <input
+                    type="range"
+                    min={10}
+                    max={100}
+                    value={quality}
+                    onChange={e => setQuality(Number(e.target.value))}
+                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                />
+            </div>
+
+            {/* Progress */}
+            {isProcessing && (
+                <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ color: 'var(--text-gray)' }}>Konwersja...</span>
+                        <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{progress}%</span>
+                    </div>
+                    <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${progress}%` }} />
+                    </div>
+                </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button
+                    onClick={convertImages}
+                    disabled={files.length === 0 || isProcessing}
+                    className="btn btn-primary"
+                >
+                    {isProcessing ? `⏳ ${progress}%` : '🔄 Konwertuj'}
+                </button>
+                {converted.length > 0 && (
+                    <>
+                        <button onClick={downloadAll} className="btn btn-secondary" disabled={isLoading}>
+                            {packAsZip && converted.length > 1 ? '📦 Pobierz ZIP' : '⬇️ Pobierz'} ({converted.length})
+                        </button>
+                        {converted.length > 1 && (
+                            <label style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontSize: '0.85rem',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={packAsZip}
+                                    onChange={(e) => setPackAsZip(e.target.checked)}
+                                    style={{ accentColor: 'var(--accent)' }}
+                                />
+                                Pakuj do ZIP
+                            </label>
+                        )}
+                    </>
+                )}
+            </div>
+
+            {/* Results */}
             {converted.length > 0 && (
-                <Section
-                    title={`✅ Skonwertowane (${converted.length})`}
-                    actions={
-                        totalOriginal - totalConverted > 0 ? (
-                            <span className="text-accent text-sm">
+                <div className="card">
+                    <div className="card-header">
+                        <span>✅ Skonwertowane ({converted.length})</span>
+                        {totalOriginal - totalConverted > 0 ? (
+                            <span style={{ color: 'var(--accent)' }}>
                                 Oszczędność: {formatBytes(totalOriginal - totalConverted)} ({Math.round((1 - totalConverted / totalOriginal) * 100)}%)
                             </span>
                         ) : (
-                            <span className="text-yellow-500 text-sm">
+                            <span style={{ color: '#f59e0b' }}>
                                 +{formatBytes(totalConverted - totalOriginal)}
                             </span>
-                        )
-                    }
-                >
-                    <div className="file-grid">
-                        {converted.slice(0, 50).map((img, i) => (
-                            <div key={i} className="file-item group relative">
-                                <img src={img.url} alt={img.name} />
-                                <div className="file-overlay flex flex-col items-center justify-center gap-2 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                        onClick={() => setCompareIndex(i)}
-                                        className="px-3 py-1.5 bg-accent text-black rounded text-xs font-semibold hover:bg-accent-hover transition-colors"
-                                    >
-                                        🔍 Porównaj
-                                    </button>
-                                    <a
-                                        href={img.url}
-                                        download={img.name}
-                                        className="px-3 py-1.5 bg-white text-black rounded text-xs font-semibold hover:bg-gray-200 transition-colors no-underline"
-                                    >
-                                        ⬇️ Pobierz
-                                    </a>
+                        )}
+                    </div>
+                    <div className="card-body">
+                        <div className="file-grid">
+                            {converted.slice(0, 50).map((img, i) => (
+                                <div key={i} className="file-item" style={{ position: 'relative' }}>
+                                    <img src={img.url} alt={img.name} />
+                                    <div className="file-overlay" style={{ justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
+                                        <button
+                                            onClick={() => setCompareIndex(i)}
+                                            style={{
+                                                padding: '0.4rem 0.6rem',
+                                                background: 'var(--accent)',
+                                                color: 'black',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                cursor: 'pointer',
+                                                fontSize: '0.7rem',
+                                                fontWeight: 600
+                                            }}
+                                        >
+                                            🔍 Porównaj
+                                        </button>
+                                        <a
+                                            href={img.url}
+                                            download={img.name}
+                                            style={{
+                                                padding: '0.4rem 0.6rem',
+                                                background: 'white',
+                                                color: 'black',
+                                                borderRadius: '4px',
+                                                fontSize: '0.7rem',
+                                                fontWeight: 600,
+                                                textDecoration: 'none'
+                                            }}
+                                        >
+                                            ⬇️ Pobierz
+                                        </a>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
-                </Section>
-            )}
-
-            {/* Tips Section */}
-            <Section title="💡 Porady i wskazówki">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div>
-                        <h4 className="text-sm font-semibold mb-2 text-accent">📁 Przetwarzanie folderów</h4>
-                        <p className="text-xs text-text-muted leading-relaxed">
-                            Możesz przeciągnąć cały folder z obrazami lub plik ZIP. Narzędzie automatycznie wypakuje i przygotuje wszystkie zdjęcia do konwersji.
-                        </p>
-                    </div>
-                    <div>
-                        <h4 className="text-sm font-semibold mb-2 text-accent">⚡ Skróty klawiszowe</h4>
-                        <p className="text-xs text-text-muted leading-relaxed">
-                            Używaj <kbd className="bg-bg-tertiary px-1 rounded">Ctrl+Z</kbd> aby cofnąć zmiany w ustawieniach i <kbd className="bg-bg-tertiary px-1 rounded">Ctrl+Y</kbd> aby je ponowić.
-                        </p>
-                    </div>
-                    <div>
-                        <h4 className="text-sm font-semibold mb-2 text-accent">🖼️ Wybór formatu</h4>
-                        <p className="text-xs text-text-muted leading-relaxed">
-                            <b>WEBP</b> oferuje najlepszą kompresję przy zachowaniu jakości. <b>PNG</b> jest idealny dla grafik z przezroczystością, a <b>JPG</b> dla zdjęć fotograficznych.
-                        </p>
+                            ))}
+                        </div>
                     </div>
                 </div>
-            </Section>
+            )}
 
             {/* Compare Modal */}
             {compareIndex !== null && converted[compareIndex] && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <>
                     <div
-                        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
                         onClick={() => setCompareIndex(null)}
+                        style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            background: 'rgba(0,0,0,0.8)',
+                            zIndex: 1000
+                        }}
                     />
-                    <div className="relative bg-bg-secondary rounded-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-border">
-                        <div className="flex justify-between items-center p-4 border-b border-border bg-bg-card">
-                            <h3 className="text-lg font-semibold">🔍 Porównanie: {converted[compareIndex].name}</h3>
+                    <div style={{
+                        position: 'fixed',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: '95vw',
+                        maxWidth: '1200px',
+                        maxHeight: '90vh',
+                        background: 'var(--bg-secondary)',
+                        borderRadius: '12px',
+                        padding: '1.5rem',
+                        zIndex: 1001,
+                        overflow: 'auto'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <h3 style={{ margin: 0, fontSize: '1rem' }}>🔍 Porównanie: {converted[compareIndex].name}</h3>
                             <button
                                 onClick={() => setCompareIndex(null)}
-                                className="btn-icon hover:bg-bg-tertiary rounded-lg transition-colors"
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--text-muted)',
+                                    cursor: 'pointer',
+                                    fontSize: '1.5rem'
+                                }}
                             >
                                 ✕
                             </button>
                         </div>
-                        <div className="flex-1 overflow-auto p-6 bg-bg-main/50">
-                            <BeforeAfterSlider
-                                beforeImage={converted[compareIndex].originalUrl}
-                                afterImage={converted[compareIndex].url}
-                                beforeLabel="Oryginał"
-                                afterLabel={settings.format}
-                                beforeSize={converted[compareIndex].originalSize}
-                                afterSize={converted[compareIndex].newSize}
-                            />
-                        </div>
+                        <BeforeAfterSlider
+                            beforeImage={converted[compareIndex].originalUrl}
+                            afterImage={converted[compareIndex].url}
+                            beforeLabel="Oryginał"
+                            afterLabel={format}
+                            beforeSize={converted[compareIndex].originalSize}
+                            afterSize={converted[compareIndex].newSize}
+                        />
                     </div>
-                </div>
+                </>
             )}
         </div>
     );

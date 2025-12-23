@@ -2,9 +2,6 @@
 
 import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
-import { ToolHeader } from '../ui/ToolHeader';
-import { FileUpload } from '../ui/FileUpload';
-import { Section } from '../ui/Section';
 
 type Mode = 'learn' | 'exact';
 
@@ -27,8 +24,9 @@ export default function OpisToHtml() {
 
     const addLog = (msg: string) => setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
-    const handleFilesSelected = useCallback((files: File[]) => {
-        const f = files.find(f => f.name.match(/\.xlsx?$/i));
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        const f = Array.from(e.dataTransfer.files).find(f => f.name.match(/\.xlsx?$/i));
         if (f) setFile(f);
     }, []);
 
@@ -299,123 +297,137 @@ export default function OpisToHtml() {
     };
 
     return (
-        <div className="flex flex-col gap-6">
-            <ToolHeader
-                title="Opis to HTML Converter"
-                description="Konwertuje zwykły tekst opisu na HTML na podstawie szablonu. Obsługuje tryb nauki (dopasowanie struktury) i dokładny (kopia 1:1)."
-                icon="📝"
-            />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Description */}
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                Konwertuje zwykły tekst opisu na HTML na podstawie szablonu
+            </p>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                 {/* Left Column */}
-                <div className="space-y-6">
-                    <Section title="1. Wgraj plik">
-                        <FileUpload
-                            onFilesSelect={handleFilesSelected}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {/* Upload Zone */}
+                    <div
+                        className="upload-zone"
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={handleDrop}
+                        onClick={() => document.getElementById('opis-file')?.click()}
+                    >
+                        <input
+                            id="opis-file"
+                            type="file"
                             accept=".xlsx,.xls"
-                            label="Wgraj plik Excel"
-                            sublabel="Wymagane kolumny: Indeks Gold, opis, HTML"
-                            icon="📥"
-                            isLoading={isProcessing}
-                            loadingText={isProcessing ? `Przetwarzanie... ${progress}%` : ''}
+                            style={{ display: 'none' }}
+                            onChange={e => e.target.files?.[0] && setFile(e.target.files[0])}
                         />
-                        {file && (
-                            <div className="mt-4 p-4 bg-bg-tertiary rounded-lg border border-border flex items-center justify-between">
-                                <span className="text-text-white font-medium">{file.name}</span>
-                                <span className="text-xs text-text-muted">{(file.size / 1024).toFixed(1)} KB</span>
-                            </div>
-                        )}
-                    </Section>
+                        <span className="icon">{file ? '✅' : '📥'}</span>
+                        <p className="title">{file?.name || 'Przeciągnij plik Excel'}</p>
+                        <p className="subtitle">
+                            {file ? `${(file.size / 1024).toFixed(1)} KB` : 'Indeks Gold | opis | HTML'}
+                        </p>
+                    </div>
 
-                    <Section title="2. Tryb konwersji">
-                        <div className="flex gap-3">
+                    {/* Mode Selection */}
+                    <div className="card">
+                        <div className="card-header">⚙️ Tryb konwersji</div>
+                        <div className="card-body" style={{ display: 'flex', gap: '0.5rem' }}>
                             <button
                                 onClick={() => setMode('learn')}
-                                className={`flex-1 p-4 rounded-lg border transition-all text-left ${mode === 'learn'
-                                        ? 'bg-accent/10 border-accent text-accent'
-                                        : 'bg-bg-tertiary border-border text-text-muted hover:border-accent/50'
-                                    }`}
+                                className={`selection-card ${mode === 'learn' ? 'active' : ''}`}
+                                style={{ flex: 1 }}
                             >
-                                <div className="font-semibold text-sm mb-1">📚 Nauka</div>
-                                <div className="text-xs opacity-80">Dopasowuje strukturę na podstawie analizy</div>
+                                <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>📚 Nauka</div>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
+                                    Dopasowuje strukturę
+                                </div>
                             </button>
                             <button
                                 onClick={() => setMode('exact')}
-                                className={`flex-1 p-4 rounded-lg border transition-all text-left ${mode === 'exact'
-                                        ? 'bg-accent/10 border-accent text-accent'
-                                        : 'bg-bg-tertiary border-border text-text-muted hover:border-accent/50'
-                                    }`}
+                                className={`selection-card ${mode === 'exact' ? 'active' : ''}`}
+                                style={{ flex: 1 }}
                             >
-                                <div className="font-semibold text-sm mb-1">🎯 Dokładny</div>
-                                <div className="text-xs opacity-80">Kopiuje strukturę 1:1 z szablonu</div>
+                                <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>🎯 Dokładny</div>
+                                <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '0.25rem' }}>
+                                    Kopia 1:1
+                                </div>
                             </button>
                         </div>
-                    </Section>
+                    </div>
 
-                    <Section title="3. Akcje">
-                        <div className="space-y-3">
-                            <button
-                                className="btn btn-primary w-full py-3"
-                                onClick={outputBlob ? downloadResult : processFile}
-                                disabled={!file || isProcessing}
-                            >
-                                {isProcessing ? '⏳ Przetwarzanie...' : outputBlob ? '📥 Pobierz wynik' : '🚀 Konwertuj'}
-                            </button>
-
-                            {outputBlob && (
-                                <button className="btn btn-secondary w-full" onClick={reset}>
-                                    🔄 Nowy plik
-                                </button>
-                            )}
+                    {/* Info Card */}
+                    <div className="card">
+                        <div className="card-header">📋 Format pliku</div>
+                        <div className="card-body" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                            <p><strong>Kolumna A:</strong> Indeks Gold</p>
+                            <p><strong>Kolumna B:</strong> opis (zwykły tekst)</p>
+                            <p><strong>Kolumna C:</strong> HTML (wzór w 1. wierszu)</p>
                         </div>
-                    </Section>
+                    </div>
+
+                    {/* Process Button */}
+                    <button
+                        className="btn btn-primary"
+                        onClick={outputBlob ? downloadResult : processFile}
+                        disabled={!file || isProcessing}
+                        style={{ width: '100%' }}
+                    >
+                        {isProcessing ? '⏳ Przetwarzanie...' : outputBlob ? '📥 Pobierz wynik' : '🚀 Konwertuj'}
+                    </button>
+
+                    {outputBlob && (
+                        <button className="btn btn-secondary" onClick={reset} style={{ width: '100%' }}>
+                            🔄 Nowy plik
+                        </button>
+                    )}
                 </div>
 
                 {/* Right Column */}
-                <div className="space-y-6">
-                    <Section title="Status i Logi">
-                        {/* Progress */}
-                        <div className="mb-6">
-                            <div className="flex justify-between mb-2 text-sm">
-                                <span className="text-text-gray">Postęp</span>
-                                <span className="font-bold text-accent">{progress}%</span>
-                            </div>
-                            <div className="w-full bg-bg-input rounded-full h-2.5">
-                                <div className="bg-accent h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {/* Progress Card */}
+                    <div className="card">
+                        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>📊 Status</span>
+                            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--accent)' }}>{progress}%</span>
+                        </div>
+                        <div className="card-body">
+                            <div className="progress-bar">
+                                <div className="progress-fill" style={{ width: `${progress}%` }} />
                             </div>
                             {rowsProcessed > 0 && (
-                                <div className="mt-2 text-xs text-green-400 text-right">
+                                <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--accent)' }}>
                                     ✅ Przetworzono {rowsProcessed} wierszy
                                 </div>
                             )}
                         </div>
+                    </div>
 
-                        {/* Logs */}
-                        <div className="bg-bg-input rounded-lg border border-border p-4 h-64 overflow-y-auto font-mono text-xs space-y-1">
+                    {/* Log */}
+                    <div className="card" style={{ flex: 1 }}>
+                        <div className="card-header">📋 Log</div>
+                        <div className="card-body" style={{ maxHeight: '200px', overflowY: 'auto', fontSize: '0.75rem', fontFamily: 'monospace' }}>
                             {logs.length > 0 ? logs.map((log, i) => (
-                                <div key={i} className={`${log.includes('✅') ? 'text-green-400' : log.includes('❌') ? 'text-red-400' : 'text-text-muted'}`}>
+                                <div key={i} style={{ padding: '0.15rem 0', color: log.includes('✅') ? 'var(--accent)' : log.includes('❌') ? 'var(--error)' : 'var(--text-muted)' }}>
                                     {log}
                                 </div>
                             )) : (
-                                <div className="text-text-muted opacity-50 italic">Oczekiwanie na rozpoczęcie...</div>
+                                <div style={{ color: 'var(--text-muted)' }}>Gotowy do pracy.</div>
                             )}
                         </div>
+                    </div>
 
-                        {/* Error */}
-                        {error && (
-                            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-                                ❌ {error}
-                            </div>
-                        )}
-                    </Section>
-
-                    <Section title="ℹ️ Format pliku">
-                        <div className="text-sm text-text-muted space-y-1">
-                            <p><strong className="text-text-white">Kolumna A:</strong> Indeks Gold</p>
-                            <p><strong className="text-text-white">Kolumna B:</strong> opis (zwykły tekst)</p>
-                            <p><strong className="text-text-white">Kolumna C:</strong> HTML (wzór w 1. wierszu)</p>
+                    {/* Error */}
+                    {error && (
+                        <div style={{
+                            padding: '0.75rem 1rem',
+                            background: 'rgba(248, 113, 113, 0.1)',
+                            border: '1px solid var(--error)',
+                            borderRadius: '8px',
+                            color: 'var(--error)',
+                            fontSize: '0.85rem'
+                        }}>
+                            ❌ {error}
                         </div>
-                    </Section>
+                    )}
                 </div>
             </div>
         </div>

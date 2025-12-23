@@ -19,8 +19,6 @@ interface HistoryContextType {
     addToHistory: (item: Omit<HistoryItem, 'id' | 'timestamp'>) => void;
     clearHistory: () => void;
     downloadItem: (id: string) => void;
-    removeFromHistory: (id: string) => void;
-    removeMultipleFromHistory: (ids: string[]) => void;
 }
 
 const HistoryContext = createContext<HistoryContextType | null>(null);
@@ -49,14 +47,6 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         setHistory([]);
     }, []);
 
-    const removeFromHistory = useCallback((id: string) => {
-        setHistory(prev => prev.filter(h => h.id !== id));
-    }, []);
-
-    const removeMultipleFromHistory = useCallback((ids: string[]) => {
-        setHistory(prev => prev.filter(h => !ids.includes(h.id)));
-    }, []);
-
     const downloadItem = useCallback((id: string) => {
         const item = history.find(h => h.id === id);
         if (item?.outputBlob) {
@@ -70,14 +60,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     }, [history]);
 
     return (
-        <HistoryContext.Provider value={{
-            history,
-            addToHistory,
-            clearHistory,
-            downloadItem,
-            removeFromHistory,
-            removeMultipleFromHistory
-        }}>
+        <HistoryContext.Provider value={{ history, addToHistory, clearHistory, downloadItem }}>
             {children}
         </HistoryContext.Provider>
     );
@@ -85,60 +68,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
 
 // History Panel Component
 export function HistoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-    const { history, clearHistory, downloadItem, removeFromHistory, removeMultipleFromHistory } = useHistory();
-    const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const [isDownloadingZip, setIsDownloadingZip] = useState(false);
+    const { history, clearHistory, downloadItem } = useHistory();
 
     if (!isOpen) return null;
-
-    const toggleSelect = (id: string) => {
-        setSelectedIds(prev =>
-            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-        );
-    };
-
-    const toggleSelectAll = () => {
-        if (selectedIds.length === history.length) {
-            setSelectedIds([]);
-        } else {
-            setSelectedIds(history.map((h: HistoryItem) => h.id));
-        }
-    };
-
-    const handleDeleteSelected = () => {
-        removeMultipleFromHistory(selectedIds);
-        setSelectedIds([]);
-    };
-
-    const handleDownloadZip = async () => {
-        if (selectedIds.length === 0) return;
-        setIsDownloadingZip(true);
-
-        try {
-            const JSZip = (await import('jszip')).default;
-            const zip = new JSZip();
-            const selectedItems = history.filter((h: HistoryItem) => selectedIds.includes(h.id));
-
-            for (const item of selectedItems) {
-                if (item.outputBlob) {
-                    zip.file(item.outputFileName, item.outputBlob);
-                }
-            }
-
-            const content = await zip.generateAsync({ type: 'blob' });
-            const url = URL.createObjectURL(content);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `history_export_${new Date().toISOString().slice(0, 10)}.zip`;
-            a.click();
-            URL.revokeObjectURL(url);
-        } catch (e) {
-            console.error('Failed to create ZIP:', e);
-        } finally {
-            setIsDownloadingZip(false);
-            setSelectedIds([]);
-        }
-    };
 
     const formatTime = (date: Date) => {
         return date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
@@ -157,7 +89,7 @@ export function HistoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: ()
     };
 
     // Group by date
-    const groupedHistory = history.reduce((acc: Record<string, HistoryItem[]>, item: HistoryItem) => {
+    const groupedHistory = history.reduce((acc, item) => {
         const dateKey = item.timestamp.toDateString();
         if (!acc[dateKey]) acc[dateKey] = [];
         acc[dateKey].push(item);
@@ -253,7 +185,7 @@ export function HistoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                             </div>
                         </div>
                     ) : (
-                        Object.entries(groupedHistory).map(([dateKey, items]: [string, HistoryItem[]]) => (
+                        Object.entries(groupedHistory).map(([dateKey, items]) => (
                             <div key={dateKey} style={{ marginBottom: '1.5rem' }}>
                                 <div style={{
                                     fontSize: '0.75rem',
@@ -272,20 +204,10 @@ export function HistoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                                             borderRadius: '8px',
                                             padding: '0.75rem',
                                             marginBottom: '0.5rem',
-                                            border: selectedIds.includes(item.id) ? '1px solid var(--accent)' : '1px solid var(--border)',
-                                            position: 'relative',
-                                            transition: 'all 0.2s ease'
+                                            border: '1px solid var(--border)'
                                         }}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-                                            <div style={{ paddingTop: '0.25rem' }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedIds.includes(item.id)}
-                                                    onChange={() => toggleSelect(item.id)}
-                                                    style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
-                                                />
-                                            </div>
                                             <span style={{ fontSize: '1.5rem' }}>{item.toolIcon}</span>
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 <div style={{
@@ -328,40 +250,23 @@ export function HistoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                                                     </div>
                                                 )}
 
-                                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                    {item.outputBlob && (
-                                                        <button
-                                                            onClick={() => downloadItem(item.id)}
-                                                            style={{
-                                                                padding: '0.35rem 0.6rem',
-                                                                background: 'var(--accent)',
-                                                                color: 'black',
-                                                                border: 'none',
-                                                                borderRadius: '4px',
-                                                                cursor: 'pointer',
-                                                                fontSize: '0.7rem',
-                                                                fontWeight: 600
-                                                            }}
-                                                        >
-                                                            📥 Pobierz
-                                                        </button>
-                                                    )}
+                                                {item.outputBlob && (
                                                     <button
-                                                        onClick={() => removeFromHistory(item.id)}
+                                                        onClick={() => downloadItem(item.id)}
                                                         style={{
                                                             padding: '0.35rem 0.6rem',
-                                                            background: 'transparent',
-                                                            color: '#ef4444',
-                                                            border: '1px solid #ef4444',
+                                                            background: 'var(--accent)',
+                                                            color: 'black',
+                                                            border: 'none',
                                                             borderRadius: '4px',
                                                             cursor: 'pointer',
                                                             fontSize: '0.7rem',
                                                             fontWeight: 600
                                                         }}
                                                     >
-                                                        🗑️ Usuń
+                                                        📥 Pobierz ponownie
                                                     </button>
-                                                </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -370,48 +275,6 @@ export function HistoryPanel({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                         ))
                     )}
                 </div>
-
-                {/* Batch Actions Bar */}
-                {selectedIds.length > 0 && (
-                    <div style={{
-                        padding: '1rem',
-                        background: 'var(--bg-tertiary)',
-                        borderTop: '1px solid var(--border)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.75rem',
-                        boxShadow: '0 -4px 12px rgba(0,0,0,0.1)'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-                                Wybrano: {selectedIds.length}
-                            </span>
-                            <button
-                                onClick={() => setSelectedIds([])}
-                                style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.8rem', cursor: 'pointer' }}
-                            >
-                                Odznacz wszystko
-                            </button>
-                        </div>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <button
-                                onClick={handleDownloadZip}
-                                disabled={isDownloadingZip}
-                                className="btn btn-primary"
-                                style={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem' }}
-                            >
-                                {isDownloadingZip ? '⏳ Pakowanie...' : '📦 Pobierz ZIP'}
-                            </button>
-                            <button
-                                onClick={handleDeleteSelected}
-                                className="btn btn-secondary"
-                                style={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem', color: '#ef4444', borderColor: '#ef4444' }}
-                            >
-                                🗑️ Usuń wybrane
-                            </button>
-                        </div>
-                    </div>
-                )}
             </div>
 
             <style jsx global>{`

@@ -1,7 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode, useCallback, useMemo } from 'react';
-import { useDragReorder, DragHandle } from '@/hooks/useDragReorder';
+import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 
 export type JobStatus = 'pending' | 'processing' | 'done' | 'error';
 
@@ -17,7 +16,6 @@ export interface QueueJob {
     error?: string;
     createdAt: Date;
     completedAt?: Date;
-    [key: string]: any;
 }
 
 interface QueueContextType {
@@ -28,7 +26,6 @@ interface QueueContextType {
     clearCompleted: () => void;
     cancelJob: (id: string) => void;
     retryJob: (id: string) => void;
-    reorderJobs: (newJobs: QueueJob[]) => void;
 }
 
 const QueueContext = createContext<QueueContextType | undefined>(undefined);
@@ -44,7 +41,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
             status: 'pending',
             progress: 0,
             createdAt: new Date(),
-        } as QueueJob;
+        };
         setJobs(prev => [...prev, newJob]);
         return id;
     }, []);
@@ -79,12 +76,8 @@ export function QueueProvider({ children }: { children: ReactNode }) {
         ));
     }, []);
 
-    const reorderJobs = useCallback((newJobs: QueueJob[]) => {
-        setJobs(newJobs);
-    }, []);
-
     return (
-        <QueueContext.Provider value={{ jobs, addJob, updateJob, removeJob, clearCompleted, cancelJob, retryJob, reorderJobs }}>
+        <QueueContext.Provider value={{ jobs, addJob, updateJob, removeJob, clearCompleted, cancelJob, retryJob }}>
             {children}
         </QueueContext.Provider>
     );
@@ -104,11 +97,7 @@ interface QueuePanelProps {
 }
 
 export function QueuePanel({ isOpen, onClose }: QueuePanelProps) {
-    const { jobs, removeJob, clearCompleted, cancelJob, retryJob, reorderJobs } = useQueue();
-    const { getDragHandleProps, getItemStyle } = useDragReorder({
-        items: jobs,
-        onReorder: reorderJobs
-    });
+    const { jobs, removeJob, clearCompleted, cancelJob, retryJob } = useQueue();
 
     if (!isOpen) return null;
 
@@ -213,14 +202,9 @@ export function QueuePanel({ isOpen, onClose }: QueuePanelProps) {
                                         borderRadius: '12px',
                                         padding: '1rem',
                                         border: '1px solid var(--border)',
-                                        position: 'relative',
-                                        ...getItemStyle(job)
                                     }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                                        <div {...getDragHandleProps(job)}>
-                                            <DragHandle />
-                                        </div>
                                         <span style={{ fontSize: '1.5rem' }}>{job.toolIcon}</span>
                                         <div style={{ flex: 1 }}>
                                             <div style={{ fontWeight: 600 }}>{job.toolName}</div>

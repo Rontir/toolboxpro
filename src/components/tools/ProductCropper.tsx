@@ -2,12 +2,6 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useStats } from '../Stats';
-import { useHistory } from '../History';
-import { useNotifications } from '../Notifications';
-import { ToolHeader } from '../ui/ToolHeader';
-import { FileUpload } from '../ui/FileUpload';
-import { Section } from '../ui/Section';
-import { useUndoRedo, useUndoRedoKeyboard, UndoRedoButtons } from '../../hooks/useUndoRedo';
 import JSZip from 'jszip';
 
 interface FilePreview {
@@ -32,36 +26,6 @@ const PLATFORMS = [
     { id: 'wlasny', label: 'Własny', icon: '✏️', width: 0, height: 0 },
 ];
 
-interface Settings {
-    platform: string;
-    customWidth: number;
-    customHeight: number;
-    bgOption: string;
-    customBgColor: string;
-    outputFormat: 'original' | 'jpg' | 'png' | 'webp';
-    autoCrop: boolean;
-    cropTolerance: number;
-    cropPadding: number;
-    namingOption: 'keep' | 'suffix';
-    packAsZip: boolean;
-    cropAreas: { left: number; top: number; right: number; bottom: number }[];
-}
-
-const DEFAULT_SETTINGS: Settings = {
-    platform: 'original',
-    customWidth: 1000,
-    customHeight: 1000,
-    bgOption: 'white',
-    customBgColor: '#ffffff',
-    outputFormat: 'original',
-    autoCrop: false,
-    cropTolerance: 10,
-    cropPadding: 10,
-    namingOption: 'keep',
-    packAsZip: true,
-    cropAreas: [],
-};
-
 const BG_COLORS = [
     { id: 'white', color: '#ffffff', label: 'Białe' },
     { id: 'black', color: '#000000', label: 'Czarne' },
@@ -71,21 +35,11 @@ const BG_COLORS = [
 
 export default function ProductCropper() {
     const [files, setFiles] = useState<FilePreview[]>([]);
-
-    // Settings with Undo/Redo
-    const {
-        state: settings,
-        setState: setSettings,
-        undo,
-        redo,
-        canUndo,
-        canRedo,
-        undoCount,
-        redoCount
-    } = useUndoRedo<Settings>(DEFAULT_SETTINGS);
-
-    useUndoRedoKeyboard(undo, redo);
-
+    const [platform, setPlatform] = useState('original');
+    const [customWidth, setCustomWidth] = useState(1000);
+    const [customHeight, setCustomHeight] = useState(1000);
+    const [bgOption, setBgOption] = useState('white');
+    const [customBgColor, setCustomBgColor] = useState('#ffffff');
     const [processed, setProcessed] = useState<ProcessedImage[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -96,21 +50,25 @@ export default function ProductCropper() {
 
     // Stats tracking
     const { recordUsage } = useStats();
-    const { addToHistory } = useHistory();
-    const { addNotification } = useNotifications();
+
+    // Format options
+    const [outputFormat, setOutputFormat] = useState<'original' | 'jpg' | 'png' | 'webp'>('original');
 
     // Manual crop mode
     const [manualCropMode, setManualCropMode] = useState(false);
     const [currentEditIndex, setCurrentEditIndex] = useState(0);
+    const [cropAreas, setCropAreas] = useState<{ left: number; top: number; right: number; bottom: number }[]>([]);
 
     // Helper to get current crop area
-    const getCurrentCropArea = () => settings.cropAreas[currentEditIndex] || { left: 0, top: 0, right: 100, bottom: 100 };
+    const getCurrentCropArea = () => cropAreas[currentEditIndex] || { left: 0, top: 0, right: 100, bottom: 100 };
 
     // Helper to set current crop area
     const setCurrentCropArea = (area: { left: number; top: number; right: number; bottom: number }) => {
-        const newAreas = [...settings.cropAreas];
-        newAreas[currentEditIndex] = area;
-        setSettings({ ...settings, cropAreas: newAreas }, 'Zmiana obszaru kadrowania');
+        setCropAreas(prev => {
+            const newAreas = [...prev];
+            newAreas[currentEditIndex] = area;
+            return newAreas;
+        });
     };
 
     // Alias for backward compatibility
@@ -123,6 +81,16 @@ export default function ProductCropper() {
         }
     };
 
+    // Auto-crop options (from Python script)
+    const [autoCrop, setAutoCrop] = useState(false);
+    const [cropTolerance, setCropTolerance] = useState(10);
+    const [cropPadding, setCropPadding] = useState(10);
+
+    // Naming options
+    const [namingOption, setNamingOption] = useState<'keep' | 'suffix'>('keep');
+
+    // ZIP export option
+    const [packAsZip, setPackAsZip] = useState(true);
 
     // Drag state for crop box
     const [dragCorner, setDragCorner] = useState<'tl' | 'tr' | 'bl' | 'br' | 'move' | null>(null);
@@ -307,22 +275,6 @@ export default function ProductCropper() {
     };
 
     // Wrapper to show loading before processing files
-    const handleFilesSelected = async (files: File[]) => {
-        if (files.length === 0) return;
-
-        setIsLoading(true);
-        setLoadingText(`📂 Wczytywanie ${files.length} plików...`);
-
-        // Small delay to render loading UI
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        try {
-            await addFiles(files);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length === 0) return;
@@ -340,15 +292,34 @@ export default function ProductCropper() {
         }
     };
 
+    const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = Array.from(e.target.files || []);
+        if (selectedFiles.length === 0) return;
+
+        setIsLoading(true);
+        setLoadingText(`📁 Wczytywanie folderu (${selectedFiles.length} plików)...`);
+
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                setLoadingText(`📸 Tworzenie podglądów...`);
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        addFiles(selectedFiles);
+                        setIsLoading(false);
+                    }, 50);
+                });
+            }, 50);
+        });
+    };
 
     const getPlatformSize = () => {
-        if (settings.platform === 'wlasny') return { width: settings.customWidth, height: settings.customHeight };
-        return PLATFORMS.find(p => p.id === settings.platform) || { width: 1000, height: 1000 };
+        if (platform === 'wlasny') return { width: customWidth, height: customHeight };
+        return PLATFORMS.find(p => p.id === platform) || { width: 1000, height: 1000 };
     };
 
     const getBackgroundColor = () => {
-        if (settings.bgOption === 'custom') return settings.customBgColor;
-        const bg = BG_COLORS.find(b => b.id === settings.bgOption);
+        if (bgOption === 'custom') return customBgColor;
+        const bg = BG_COLORS.find(b => b.id === bgOption);
         return bg?.color || '#ffffff';
     };
 
@@ -453,8 +424,8 @@ export default function ProductCropper() {
                 const imgData = tempCtx.getImageData(0, 0, img.width, img.height);
 
                 // Manual crop mode - apply user-defined crop area for this image
-                const imageCropArea = settings.cropAreas[i] || { left: 0, top: 0, right: 100, bottom: 100 };
-                if (manualCropMode && settings.cropAreas[i]) {
+                const imageCropArea = cropAreas[i] || { left: 0, top: 0, right: 100, bottom: 100 };
+                if (manualCropMode && cropAreas[i]) {
                     // Convert percentage to pixels
                     srcX = Math.round(img.width * imageCropArea.left / 100);
                     srcY = Math.round(img.height * imageCropArea.top / 100);
@@ -462,8 +433,8 @@ export default function ProductCropper() {
                     srcH = Math.round(img.height * (imageCropArea.bottom - imageCropArea.top) / 100);
                 }
                 // Auto-crop white margins if enabled (and no manual crop set for this image)
-                else if (settings.autoCrop) {
-                    const cropResult = autoCropImage(imgData, settings.cropTolerance, settings.cropPadding);
+                else if (autoCrop) {
+                    const cropResult = autoCropImage(imgData, cropTolerance, cropPadding);
                     if (cropResult) {
                         srcX = cropResult.left;
                         srcY = cropResult.top;
@@ -474,13 +445,13 @@ export default function ProductCropper() {
 
                 // Determine output size
                 let targetW: number, targetH: number;
-                if (settings.platform === 'original') {
+                if (platform === 'original') {
                     // Keep size (original or after trim if autoCrop enabled)
                     targetW = srcW;
                     targetH = srcH;
-                } else if (settings.platform === 'wlasny') {
-                    targetW = settings.customWidth;
-                    targetH = settings.customHeight;
+                } else if (platform === 'wlasny') {
+                    targetW = customWidth;
+                    targetH = customHeight;
                 } else {
                     targetW = platformData.width;
                     targetH = platformData.height;
@@ -500,7 +471,7 @@ export default function ProductCropper() {
 
                 // Calculate scale and position
                 let drawX: number, drawY: number, drawW: number, drawH: number;
-                if (settings.platform === 'original') {
+                if (platform === 'original') {
                     // No scaling, just draw directly
                     drawX = 0;
                     drawY = 0;
@@ -522,7 +493,7 @@ export default function ProductCropper() {
                 let finalFormat: string;
                 let finalExt: string;
 
-                if (settings.outputFormat === 'original') {
+                if (outputFormat === 'original') {
                     // Preserve original format
                     const originalExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
                     if (['jpg', 'jpeg'].includes(originalExt)) {
@@ -541,7 +512,7 @@ export default function ProductCropper() {
                     }
                 } else {
                     // Use selected format
-                    switch (settings.outputFormat) {
+                    switch (outputFormat) {
                         case 'jpg':
                             finalFormat = 'image/jpeg';
                             finalExt = 'jpg';
@@ -566,8 +537,8 @@ export default function ProductCropper() {
                 });
 
                 const baseName = file.name.replace(/\.[^.]+$/, '');
-                const outputName = settings.namingOption === 'suffix'
-                    ? `${baseName}_${settings.platform}.${finalExt}`
+                const outputName = namingOption === 'suffix'
+                    ? `${baseName}_${platform}.${finalExt}`
                     : `${baseName}.${finalExt}`;
 
                 results.push({
@@ -588,21 +559,6 @@ export default function ProductCropper() {
         // Update stats counter
         if (results.length > 0) {
             recordUsage('cropper', results.length);
-            addNotification('success', 'Kadrowanie zakończone', `Pomyślnie skadrowano ${results.length} obrazów.`);
-
-            // Add to history
-            addToHistory({
-                tool: 'Kadrowanie',
-                toolIcon: '✂️',
-                inputFiles: files.map(f => f.file.name),
-                outputFileName: results.length === 1 ? results[0].name : `${results.length}_obrazów.zip`,
-                outputBlob: null,
-                summary: `${results.length} obrazów → ${PLATFORMS.find(p => p.id === settings.platform)?.label || settings.platform}`,
-                stats: {
-                    'Plików': results.length,
-                    'Platforma': PLATFORMS.find(p => p.id === settings.platform)?.label || settings.platform
-                }
-            });
         }
     };
 
@@ -620,7 +576,7 @@ export default function ProductCropper() {
         if (processed.length === 0) return;
 
         // If only 1 file OR ZIP mode is off, download individually
-        if (processed.length === 1 || !settings.packAsZip) {
+        if (processed.length === 1 || !packAsZip) {
             processed.forEach(img => {
                 const a = document.createElement('a');
                 a.href = img.url;
@@ -684,13 +640,7 @@ export default function ProductCropper() {
     };
 
     return (
-        <div className="flex flex-col gap-6">
-            <ToolHeader
-                title="Inteligentne Kadrowanie Produktów"
-                description="Automatycznie przycinaj i formatuj zdjęcia produktów dla różnych platform e-commerce (Allegro, Empik, Shopify i inne)."
-                icon="✂️"
-            />
-
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Loading/Processing Overlay */}
             {(isProcessing || isLoading) && (
                 <div className="upload-progress-overlay">
@@ -710,157 +660,157 @@ export default function ProductCropper() {
                     )}
                 </div>
             )}
-
             {/* Upload Zone */}
-            <Section
-                actions={
-                    files.length > 0 && (
-                        <button
-                            onClick={clearAll}
-                            className="text-sm text-red-500 hover:text-red-400 transition-colors flex items-center gap-1"
-                        >
-                            🗑️ Wyczyść wszystko
-                        </button>
-                    )
-                }
+            <div
+                className={`upload-zone ${files.length > 0 ? 'has-files' : ''} ${isDragging ? 'dragging' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                onClick={() => {
+                    if (uploadMode === 'files') {
+                        document.getElementById('crop-input')?.click();
+                    } else {
+                        document.getElementById('crop-folder-input')?.click();
+                    }
+                }}
             >
-                <div className="flex justify-end mb-4">
-                    <div className="flex gap-2 bg-bg-tertiary p-1 rounded-lg">
-                        <button
-                            onClick={() => setUploadMode('files')}
-                            className={`px-3 py-1.5 rounded-md text-sm transition-all ${uploadMode === 'files' ? 'bg-accent text-black font-medium shadow-lg' : 'text-text-muted hover:text-text-white'}`}
-                        >
-                            Pliki
-                        </button>
-                        <button
-                            onClick={() => setUploadMode('folder')}
-                            className={`px-3 py-1.5 rounded-md text-sm transition-all ${uploadMode === 'folder' ? 'bg-accent text-black font-medium shadow-lg' : 'text-text-muted hover:text-text-white'}`}
-                        >
-                            Folder
-                        </button>
-                    </div>
-                </div>
-
-                <FileUpload
-                    onFilesSelect={handleFilesSelected}
+                <input
+                    type="file"
+                    id="crop-input"
                     accept="image/*,.zip"
-                    multiple={true}
-                    directory={uploadMode === 'folder'}
-                    label={uploadMode === 'folder' ? "Wybierz folder ze zdjęciami" : "Wgraj zdjęcia produktów"}
-                    sublabel="Obsługujemy JPG, PNG, WEBP. Możesz wgrać wiele plików naraz."
-                    icon={uploadMode === 'folder' ? "📁" : "📸"}
-                    isLoading={isLoading}
-                    loadingText={loadingText}
+                    multiple
+                    className="hidden"
+                    onChange={handleFileSelect}
                 />
-            </Section>
+                <input
+                    type="file"
+                    id="crop-folder-input"
+                    // @ts-expect-error webkitdirectory not in types
+                    webkitdirectory=""
+                    multiple
+                    className="hidden"
+                    onChange={handleFolderSelect}
+                />
+                <span className="icon">✏️</span>
+                <p className="title">
+                    {files.length > 0 ? `${files.length} zdjęć produktów` : 'Przeciągnij zdjęcia lub folder'}
+                </p>
+                <p className="subtitle" style={{ marginBottom: '1rem' }}>lub wrzuć archiwum ZIP ze zdjęciami</p>
+
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                    <button
+                        className={`btn ${uploadMode === 'files' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => { setUploadMode('files'); document.getElementById('crop-input')?.click(); }}
+                    >
+                        🖼️ Pliki
+                    </button>
+                    <button
+                        className={`btn ${uploadMode === 'folder' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => { setUploadMode('folder'); document.getElementById('crop-folder-input')?.click(); }}
+                    >
+                        📁 Folder
+                    </button>
+                    {files.length > 0 && (
+                        <button onClick={clearAll} className="btn btn-secondary" style={{ background: 'var(--bg-tertiary)' }}>
+                            🗑️ Wyczyść
+                        </button>
+                    )}
+                </div>
+            </div>
 
             {/* File Preview */}
-            {
-                files.length > 0 && (
-                    <div className="card">
-                        <div className="card-header">
-                            <span>📁 Wybrane ({files.length})</span>
-                        </div>
-                        <div className="card-body">
-                            <div className="file-grid">
-                                {files.slice(0, 20).map((f, i) => (
-                                    <div key={i} className="file-item" style={{ position: 'relative' }}>
-                                        <img src={f.preview} alt={f.file.name} />
-                                        <button
-                                            onClick={() => {
-                                                URL.revokeObjectURL(f.preview);
-                                                setFiles(prev => prev.filter((_, index) => index !== i));
-                                            }}
-                                            className="file-remove-btn"
-                                            style={{
-                                                position: 'absolute',
-                                                top: '0.5rem',
-                                                right: '0.5rem',
-                                                width: '2rem',
-                                                height: '2rem',
-                                                borderRadius: '50%',
-                                                background: 'rgba(220, 38, 38, 0.9)',
-                                                border: 'none',
-                                                color: 'white',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                fontSize: '1.2rem',
-                                                fontWeight: 'bold',
-                                                transition: 'all 0.2s'
-                                            }}
-                                            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(220, 38, 38, 1)'}
-                                            onMouseOut={(e) => e.currentTarget.style.background = 'rgba(220, 38, 38, 0.9)'}
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
-                                ))}
-                                {files.length > 20 && (
-                                    <div className="file-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <span style={{ color: 'var(--text-muted)' }}>+{files.length - 20}</span>
-                                    </div>
-                                )}
-                            </div>
+            {files.length > 0 && (
+                <div className="card">
+                    <div className="card-header">
+                        <span>📁 Wybrane ({files.length})</span>
+                    </div>
+                    <div className="card-body">
+                        <div className="file-grid">
+                            {files.slice(0, 20).map((f, i) => (
+                                <div key={i} className="file-item" style={{ position: 'relative' }}>
+                                    <img src={f.preview} alt={f.file.name} />
+                                    <button
+                                        onClick={() => {
+                                            URL.revokeObjectURL(f.preview);
+                                            setFiles(prev => prev.filter((_, index) => index !== i));
+                                        }}
+                                        className="file-remove-btn"
+                                        style={{
+                                            position: 'absolute',
+                                            top: '0.5rem',
+                                            right: '0.5rem',
+                                            width: '2rem',
+                                            height: '2rem',
+                                            borderRadius: '50%',
+                                            background: 'rgba(220, 38, 38, 0.9)',
+                                            border: 'none',
+                                            color: 'white',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '1.2rem',
+                                            fontWeight: 'bold',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(220, 38, 38, 1)'}
+                                        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(220, 38, 38, 0.9)'}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                            {files.length > 20 && (
+                                <div className="file-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>+{files.length - 20}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
-                )
-            }
+                </div>
+            )}
 
-            <Section
-                title="⚙️ Ustawienia platformy"
-                actions={
-                    <UndoRedoButtons
-                        canUndo={canUndo}
-                        canRedo={canRedo}
-                        onUndo={undo}
-                        onRedo={redo}
-                        undoCount={undoCount}
-                        redoCount={redoCount}
-                    />
-                }
-            >
-                <p className="text-sm text-text-muted mb-3">Wybierz platformę docelową:</p>
-                <div className="flex flex-wrap gap-2">
+            {/* Platform Selection */}
+            <div>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Preset platformy:</p>
+                <div className="filter-pills">
                     {PLATFORMS.map(p => (
                         <button
                             key={p.id}
-                            onClick={() => setSettings({ ...settings, platform: p.id }, `Zmiana platformy na ${p.label}`)}
-                            className={`filter-pill flex flex-col items-center gap-1 py-3 px-5 ${settings.platform === p.id ? 'active' : ''}`}
+                            onClick={() => setPlatform(p.id)}
+                            className={`filter-pill ${platform === p.id ? 'active' : ''}`}
+                            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', padding: '0.75rem 1.25rem' }}
                         >
-                            <span className="text-lg">{p.icon} {p.label}</span>
-                            {p.width > 0 && <span className="text-xs opacity-70">{p.width}×{p.height}</span>}
+                            <span>{p.icon} {p.label}</span>
+                            {p.width > 0 && <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>{p.width}×{p.height}</span>}
                         </button>
                     ))}
                 </div>
-            </Section>
+            </div>
 
             {/* Custom Size */}
-            {
-                settings.platform === 'wlasny' && (
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                        <div style={{ flex: 1 }}>
-                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>Szerokość</label>
-                            <input
-                                type="number"
-                                className="form-input"
-                                value={settings.customWidth}
-                                onChange={e => setSettings({ ...settings, customWidth: Number(e.target.value) }, 'Zmiana szerokości')}
-                            />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                            <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>Wysokość</label>
-                            <input
-                                type="number"
-                                className="form-input"
-                                value={settings.customHeight}
-                                onChange={e => setSettings({ ...settings, customHeight: Number(e.target.value) }, 'Zmiana wysokości')}
-                            />
-                        </div>
+            {platform === 'wlasny' && (
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                    <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>Szerokość</label>
+                        <input
+                            type="number"
+                            className="form-input"
+                            value={customWidth}
+                            onChange={e => setCustomWidth(Number(e.target.value))}
+                        />
                     </div>
-                )
-            }
+                    <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>Wysokość</label>
+                        <input
+                            type="number"
+                            className="form-input"
+                            value={customHeight}
+                            onChange={e => setCustomHeight(Number(e.target.value))}
+                        />
+                    </div>
+                </div>
+            )}
 
             {/* Background Color */}
             <div>
@@ -869,8 +819,8 @@ export default function ProductCropper() {
                     {BG_COLORS.map(bg => (
                         <button
                             key={bg.id}
-                            onClick={() => setSettings({ ...settings, bgOption: bg.id }, `Zmiana tła na ${bg.label}`)}
-                            className={`filter-pill ${settings.bgOption === bg.id ? 'active' : ''}`}
+                            onClick={() => setBgOption(bg.id)}
+                            className={`filter-pill ${bgOption === bg.id ? 'active' : ''}`}
                             style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -892,11 +842,11 @@ export default function ProductCropper() {
                             {bg.label}
                         </button>
                     ))}
-                    {settings.bgOption === 'custom' && (
+                    {bgOption === 'custom' && (
                         <input
                             type="color"
-                            value={settings.customBgColor}
-                            onChange={e => setSettings({ ...settings, customBgColor: e.target.value }, 'Zmiana własnego koloru tła')}
+                            value={customBgColor}
+                            onChange={e => setCustomBgColor(e.target.value)}
                             style={{ width: '2.5rem', height: '2.5rem', borderRadius: '8px', cursor: 'pointer', border: 'none' }}
                         />
                     )}
@@ -908,26 +858,26 @@ export default function ProductCropper() {
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Format wyjściowy:</p>
                 <div className="filter-pills">
                     <button
-                        onClick={() => setSettings({ ...settings, outputFormat: 'original' }, 'Zmiana formatu na oryginalny')}
-                        className={`filter-pill ${settings.outputFormat === 'original' ? 'active' : ''}`}
+                        onClick={() => setOutputFormat('original')}
+                        className={`filter-pill ${outputFormat === 'original' ? 'active' : ''}`}
                     >
                         📄 Oryginalny
                     </button>
                     <button
-                        onClick={() => setSettings({ ...settings, outputFormat: 'jpg' }, 'Zmiana formatu na JPG')}
-                        className={`filter-pill ${settings.outputFormat === 'jpg' ? 'active' : ''}`}
+                        onClick={() => setOutputFormat('jpg')}
+                        className={`filter-pill ${outputFormat === 'jpg' ? 'active' : ''}`}
                     >
                         🖼️ JPG
                     </button>
                     <button
-                        onClick={() => setSettings({ ...settings, outputFormat: 'png' }, 'Zmiana formatu na PNG')}
-                        className={`filter-pill ${settings.outputFormat === 'png' ? 'active' : ''}`}
+                        onClick={() => setOutputFormat('png')}
+                        className={`filter-pill ${outputFormat === 'png' ? 'active' : ''}`}
                     >
                         🎨 PNG
                     </button>
                     <button
-                        onClick={() => setSettings({ ...settings, outputFormat: 'webp' }, 'Zmiana formatu na WebP')}
-                        className={`filter-pill ${settings.outputFormat === 'webp' ? 'active' : ''}`}
+                        onClick={() => setOutputFormat('webp')}
+                        className={`filter-pill ${outputFormat === 'webp' ? 'active' : ''}`}
                     >
                         ⚡ WebP
                     </button>
@@ -940,41 +890,41 @@ export default function ProductCropper() {
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                         <input
                             type="checkbox"
-                            checked={settings.autoCrop}
-                            onChange={e => setSettings({ ...settings, autoCrop: e.target.checked }, e.target.checked ? 'Włączenie auto-kadrowania' : 'Wyłączenie auto-kadrowania')}
+                            checked={autoCrop}
+                            onChange={e => setAutoCrop(e.target.checked)}
                             style={{ accentColor: 'var(--accent)', width: '1.25rem', height: '1.25rem' }}
                         />
                         ✂️ Przytnij według koloru tła
                     </label>
                 </div>
-                {settings.autoCrop && (
+                {autoCrop && (
                     <div className="card-body">
                         <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
                             <div style={{ flex: 1, minWidth: '150px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                     <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Tolerancja</span>
-                                    <span style={{ fontSize: '0.875rem', color: 'var(--accent)' }}>{settings.cropTolerance}</span>
+                                    <span style={{ fontSize: '0.875rem', color: 'var(--accent)' }}>{cropTolerance}</span>
                                 </div>
                                 <input
                                     type="range"
                                     min={0}
                                     max={50}
-                                    value={settings.cropTolerance}
-                                    onChange={e => setSettings({ ...settings, cropTolerance: Number(e.target.value) }, 'Zmiana tolerancji')}
+                                    value={cropTolerance}
+                                    onChange={e => setCropTolerance(Number(e.target.value))}
                                     style={{ width: '100%', accentColor: 'var(--accent)' }}
                                 />
                             </div>
                             <div style={{ flex: 1, minWidth: '150px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                     <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Margines</span>
-                                    <span style={{ fontSize: '0.875rem', color: 'var(--accent)' }}>{settings.cropPadding}px</span>
+                                    <span style={{ fontSize: '0.875rem', color: 'var(--accent)' }}>{cropPadding}px</span>
                                 </div>
                                 <input
                                     type="range"
                                     min={0}
                                     max={50}
-                                    value={settings.cropPadding}
-                                    onChange={e => setSettings({ ...settings, cropPadding: Number(e.target.value) }, 'Zmiana marginesu')}
+                                    value={cropPadding}
+                                    onChange={e => setCropPadding(Number(e.target.value))}
                                     style={{ width: '100%', accentColor: 'var(--accent)' }}
                                 />
                             </div>
@@ -988,23 +938,23 @@ export default function ProductCropper() {
                 <div className="card-header">📝 Nazewnictwo</div>
                 <div className="card-body">
                     <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', cursor: 'pointer', color: settings.namingOption === 'keep' ? 'var(--accent)' : 'var(--text-gray)' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', cursor: 'pointer', color: namingOption === 'keep' ? 'var(--accent)' : 'var(--text-gray)' }}>
                             <input
                                 type="radio"
                                 name="naming"
-                                checked={settings.namingOption === 'keep'}
-                                onChange={() => setSettings({ ...settings, namingOption: 'keep' }, 'Zmiana nazewnictwa na oryginalne')}
+                                checked={namingOption === 'keep'}
+                                onChange={() => setNamingOption('keep')}
                                 style={{ accentColor: 'var(--accent)', width: '1.25rem', height: '1.25rem' }}
                             />
                             Zachowaj nazwę
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(photo.jpg)</span>
                         </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', cursor: 'pointer', color: settings.namingOption === 'suffix' ? 'var(--accent)' : 'var(--text-gray)' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', cursor: 'pointer', color: namingOption === 'suffix' ? 'var(--accent)' : 'var(--text-gray)' }}>
                             <input
                                 type="radio"
                                 name="naming"
-                                checked={settings.namingOption === 'suffix'}
-                                onChange={() => setSettings({ ...settings, namingOption: 'suffix' }, 'Zmiana nazewnictwa na sufiks')}
+                                checked={namingOption === 'suffix'}
+                                onChange={() => setNamingOption('suffix')}
                                 style={{ accentColor: 'var(--accent)', width: '1.25rem', height: '1.25rem' }}
                             />
                             Dodaj sufiks
@@ -1015,19 +965,17 @@ export default function ProductCropper() {
             </div>
 
             {/* Progress */}
-            {
-                isProcessing && (
-                    <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                            <span style={{ color: 'var(--text-gray)' }}>Przetwarzanie...</span>
-                            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{progress}%</span>
-                        </div>
-                        <div className="progress-bar">
-                            <div className="progress-fill" style={{ width: `${progress}%` }} />
-                        </div>
+            {isProcessing && (
+                <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ color: 'var(--text-gray)' }}>Przetwarzanie...</span>
+                        <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{progress}%</span>
                     </div>
-                )
-            }
+                    <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${progress}%` }} />
+                    </div>
+                </div>
+            )}
 
             {/* Manual Crop Mode Toggle */}
             <div className="card">
@@ -1040,7 +988,7 @@ export default function ProductCropper() {
                                 setManualCropMode(e.target.checked);
                                 if (e.target.checked && files.length > 0) {
                                     setCurrentEditIndex(0);
-                                    setCurrentCropArea({ left: 0, top: 0, right: 100, bottom: 100 });
+                                    setCropArea({ left: 0, top: 0, right: 100, bottom: 100 });
                                 }
                             }}
                             style={{ accentColor: 'var(--accent)', width: '1.25rem', height: '1.25rem' }}
@@ -1062,7 +1010,7 @@ export default function ProductCropper() {
                                         key={i}
                                         onClick={() => {
                                             setCurrentEditIndex(i);
-                                            setCurrentCropArea({ left: 0, top: 0, right: 100, bottom: 100 });
+                                            setCropArea({ left: 0, top: 0, right: 100, bottom: 100 });
                                         }}
                                         style={{
                                             width: '60px',
@@ -1124,7 +1072,7 @@ export default function ProductCropper() {
                                     top: 0,
                                     left: 0,
                                     right: 0,
-                                    height: `${getCurrentCropArea().top}%`,
+                                    height: `${cropArea.top}%`,
                                     background: 'rgba(0,0,0,0.6)'
                                 }} />
                                 {/* Bottom dark area */}
@@ -1133,25 +1081,25 @@ export default function ProductCropper() {
                                     bottom: 0,
                                     left: 0,
                                     right: 0,
-                                    height: `${100 - getCurrentCropArea().bottom}%`,
+                                    height: `${100 - cropArea.bottom}%`,
                                     background: 'rgba(0,0,0,0.6)'
                                 }} />
                                 {/* Left dark area */}
                                 <div style={{
                                     position: 'absolute',
-                                    top: `${getCurrentCropArea().top}%`,
+                                    top: `${cropArea.top}%`,
                                     left: 0,
-                                    width: `${getCurrentCropArea().left}%`,
-                                    height: `${getCurrentCropArea().bottom - getCurrentCropArea().top}%`,
+                                    width: `${cropArea.left}%`,
+                                    height: `${cropArea.bottom - cropArea.top}%`,
                                     background: 'rgba(0,0,0,0.6)'
                                 }} />
                                 {/* Right dark area */}
                                 <div style={{
                                     position: 'absolute',
-                                    top: `${getCurrentCropArea().top}%`,
+                                    top: `${cropArea.top}%`,
                                     right: 0,
-                                    width: `${100 - getCurrentCropArea().right}%`,
-                                    height: `${getCurrentCropArea().bottom - getCurrentCropArea().top}%`,
+                                    width: `${100 - cropArea.right}%`,
+                                    height: `${cropArea.bottom - cropArea.top}%`,
                                     background: 'rgba(0,0,0,0.6)'
                                 }} />
                             </div>
@@ -1159,10 +1107,10 @@ export default function ProductCropper() {
                             {/* Crop box border */}
                             <div style={{
                                 position: 'absolute',
-                                top: `${getCurrentCropArea().top}%`,
-                                left: `${getCurrentCropArea().left}%`,
-                                width: `${getCurrentCropArea().right - getCurrentCropArea().left}%`,
-                                height: `${getCurrentCropArea().bottom - getCurrentCropArea().top}%`,
+                                top: `${cropArea.top}%`,
+                                left: `${cropArea.left}%`,
+                                width: `${cropArea.right - cropArea.left}%`,
+                                height: `${cropArea.bottom - cropArea.top}%`,
                                 border: '2px solid var(--accent)',
                                 boxSizing: 'border-box',
                                 pointerEvents: 'none'
@@ -1180,8 +1128,8 @@ export default function ProductCropper() {
                                 onMouseDown={(e) => { e.preventDefault(); setDragCorner('tl'); }}
                                 style={{
                                     position: 'absolute',
-                                    top: `${getCurrentCropArea().top}%`,
-                                    left: `${getCurrentCropArea().left}%`,
+                                    top: `${cropArea.top}%`,
+                                    left: `${cropArea.left}%`,
                                     width: '20px',
                                     height: '20px',
                                     transform: 'translate(-50%, -50%)',
@@ -1198,8 +1146,8 @@ export default function ProductCropper() {
                                 onMouseDown={(e) => { e.preventDefault(); setDragCorner('tr'); }}
                                 style={{
                                     position: 'absolute',
-                                    top: `${getCurrentCropArea().top}%`,
-                                    left: `${getCurrentCropArea().right}%`,
+                                    top: `${cropArea.top}%`,
+                                    left: `${cropArea.right}%`,
                                     width: '20px',
                                     height: '20px',
                                     transform: 'translate(-50%, -50%)',
@@ -1216,8 +1164,8 @@ export default function ProductCropper() {
                                 onMouseDown={(e) => { e.preventDefault(); setDragCorner('bl'); }}
                                 style={{
                                     position: 'absolute',
-                                    top: `${getCurrentCropArea().bottom}%`,
-                                    left: `${getCurrentCropArea().left}%`,
+                                    top: `${cropArea.bottom}%`,
+                                    left: `${cropArea.left}%`,
                                     width: '20px',
                                     height: '20px',
                                     transform: 'translate(-50%, -50%)',
@@ -1234,8 +1182,8 @@ export default function ProductCropper() {
                                 onMouseDown={(e) => { e.preventDefault(); setDragCorner('br'); }}
                                 style={{
                                     position: 'absolute',
-                                    top: `${getCurrentCropArea().bottom}%`,
-                                    left: `${getCurrentCropArea().right}%`,
+                                    top: `${cropArea.bottom}%`,
+                                    left: `${cropArea.right}%`,
                                     width: '20px',
                                     height: '20px',
                                     transform: 'translate(-50%, -50%)',
@@ -1318,7 +1266,7 @@ export default function ProductCropper() {
                 {processed.length > 0 && (
                     <>
                         <button onClick={downloadAll} className="btn btn-secondary" disabled={isLoading}>
-                            {settings.packAsZip && processed.length > 1 ? '📦 Pobierz ZIP' : '⬇️ Pobierz'} ({processed.length})
+                            {packAsZip && processed.length > 1 ? '📦 Pobierz ZIP' : '⬇️ Pobierz'} ({processed.length})
                         </button>
                         {processed.length > 1 && (
                             <label style={{
@@ -1331,8 +1279,8 @@ export default function ProductCropper() {
                             }}>
                                 <input
                                     type="checkbox"
-                                    checked={settings.packAsZip}
-                                    onChange={e => setSettings({ ...settings, packAsZip: e.target.checked }, e.target.checked ? 'Włączenie pakowania ZIP' : 'Wyłączenie pakowania ZIP')}
+                                    checked={packAsZip}
+                                    onChange={(e) => setPackAsZip(e.target.checked)}
                                     style={{ accentColor: 'var(--accent)' }}
                                 />
                                 Pakuj do ZIP
@@ -1343,35 +1291,33 @@ export default function ProductCropper() {
             </div>
 
             {/* Results */}
-            {
-                processed.length > 0 && (
-                    <div className="card">
-                        <div className="card-header">
-                            <span>✅ Przetworzone ({processed.length})</span>
-                            <span style={{ color: 'var(--accent)' }}>
-                                → {getPlatformSize().width}×{getPlatformSize().height}px
-                            </span>
-                        </div>
-                        <div className="card-body">
-                            <div className="file-grid">
-                                {processed.slice(0, 30).map((img, i) => (
-                                    <a key={i} href={img.url} download={img.name} className="file-item" style={{ display: 'block' }}>
-                                        <img src={img.url} alt={img.name} />
-                                        <div className="file-overlay" style={{ justifyContent: 'center', alignItems: 'center' }}>
-                                            <span style={{ fontSize: '1.5rem' }}>⬇️</span>
-                                        </div>
-                                    </a>
-                                ))}
-                                {processed.length > 30 && (
-                                    <div className="file-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <span style={{ color: 'var(--text-muted)' }}>+{processed.length - 30}</span>
+            {processed.length > 0 && (
+                <div className="card">
+                    <div className="card-header">
+                        <span>✅ Przetworzone ({processed.length})</span>
+                        <span style={{ color: 'var(--accent)' }}>
+                            → {getPlatformSize().width}×{getPlatformSize().height}px
+                        </span>
+                    </div>
+                    <div className="card-body">
+                        <div className="file-grid">
+                            {processed.slice(0, 30).map((img, i) => (
+                                <a key={i} href={img.url} download={img.name} className="file-item" style={{ display: 'block' }}>
+                                    <img src={img.url} alt={img.name} />
+                                    <div className="file-overlay" style={{ justifyContent: 'center', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '1.5rem' }}>⬇️</span>
                                     </div>
-                                )}
-                            </div>
+                                </a>
+                            ))}
+                            {processed.length > 30 && (
+                                <div className="file-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <span style={{ color: 'var(--text-muted)' }}>+{processed.length - 30}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
-                )
-            }
+                </div>
+            )}
         </div>
     );
 }

@@ -1,9 +1,6 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { ToolHeader } from '../ui/ToolHeader';
-import { FileUpload } from '../ui/FileUpload';
-import { Section } from '../ui/Section';
 
 interface DictFile {
     name: string;
@@ -27,9 +24,10 @@ export default function PerfumyHelper() {
     const [resultUrl, setResultUrl] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const handleFilesSelected = useCallback((files: File[]) => {
-        const f = files.find(f => f.name.match(/\.xlsx?$/i));
-        if (f) setSourceFile(f);
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        const file = Array.from(e.dataTransfer.files).find(f => f.name.match(/\.xlsx?$/i));
+        if (file) setSourceFile(file);
     }, []);
 
     const handleDictUpload = (index: number, file: File | null) => {
@@ -103,153 +101,170 @@ export default function PerfumyHelper() {
     };
 
     return (
-        <div className="flex flex-col gap-6">
-            <ToolHeader
-                title="Perfumy Helper"
-                description="Automatyczne wypełnianie zestawów perfum - pojemności, płeć, kompozycje, linie. Wymaga plików słownikowych."
-                icon="✨"
-            />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Description */}
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                Automatyczne wypełnianie zestawów perfum - pojemności, płeć, kompozycje, linie
+            </p>
 
             {!resultUrl ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                     {/* Left Column */}
-                    <div className="space-y-6">
-                        <Section title="1. Plik źródłowy">
-                            <FileUpload
-                                onFilesSelect={handleFilesSelected}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {/* Source File Upload */}
+                        <div
+                            className="upload-zone"
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={handleDrop}
+                            onClick={() => document.getElementById('source-upload')?.click()}
+                        >
+                            <input
+                                id="source-upload"
+                                type="file"
                                 accept=".xlsx,.xls"
-                                label="Wgraj plik z zestawami"
-                                sublabel="Plik Excel z danymi do uzupełnienia"
-                                icon="📥"
-                                isLoading={isProcessing}
-                                loadingText={isProcessing ? `Przetwarzanie... ${progress}%` : ''}
+                                style={{ display: 'none' }}
+                                onChange={e => e.target.files?.[0] && setSourceFile(e.target.files[0])}
                             />
-                            {sourceFile && (
-                                <div className="mt-4 p-4 bg-bg-tertiary rounded-lg border border-border flex items-center justify-between">
-                                    <span className="text-text-white font-medium">{sourceFile.name}</span>
-                                    <span className="text-xs text-text-muted">{(sourceFile.size / 1024).toFixed(1)} KB</span>
-                                </div>
-                            )}
-                        </Section>
+                            <span className="icon">{sourceFile ? '✅' : '📥'}</span>
+                            <p className="title">{sourceFile?.name || 'Przeciągnij plik Excel'}</p>
+                            <p className="subtitle">
+                                {sourceFile ? `${(sourceFile.size / 1024).toFixed(1)} KB` : 'Zestawy perfum'}
+                            </p>
+                        </div>
 
-                        <Section title="2. Słowniki (wymagane)">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Dictionary Files */}
+                        <div className="card">
+                            <div className="card-header">📚 Słowniki (wymagane)</div>
+                            <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                                 {dictFiles.map((dict, idx) => (
                                     <div
                                         key={idx}
                                         onClick={() => !dict.file && document.getElementById(`dict-${idx}`)?.click()}
-                                        className={`p-3 rounded-lg border transition-all cursor-pointer flex flex-col justify-between h-24 ${dict.file
-                                                ? 'bg-green-500/10 border-green-500/50'
-                                                : 'bg-bg-tertiary border-border hover:border-accent/50'
-                                            }`}
+                                        className="selection-card"
+                                        style={{
+                                            background: dict.file ? 'rgba(74, 222, 128, 0.1)' : 'var(--bg-tertiary)',
+                                            border: dict.file ? '1px solid var(--accent)' : '1px solid var(--border)',
+                                            cursor: dict.file ? 'default' : 'pointer',
+                                            alignItems: 'stretch',
+                                            textAlign: 'left'
+                                        }}
                                     >
                                         <input
                                             id={`dict-${idx}`}
                                             type="file"
                                             accept=".xlsx,.xls"
-                                            className="hidden"
+                                            style={{ display: 'none' }}
                                             onChange={e => e.target.files?.[0] && handleDictUpload(idx, e.target.files[0])}
                                         />
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-lg">{dict.icon}</span>
-                                                <span className="font-semibold text-sm">{dict.name}</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <span>{dict.icon}</span>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{dict.name}</span>
+                                                {!dict.file && <span style={{ color: 'var(--error)', fontSize: '0.75rem' }}>*</span>}
                                             </div>
-                                            {dict.file ? (
+                                            {dict.file && (
                                                 <button
                                                     onClick={e => { e.stopPropagation(); handleDictUpload(idx, null); }}
-                                                    className="text-text-muted hover:text-red-400 transition-colors"
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        color: 'var(--text-muted)',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem'
+                                                    }}
                                                 >
                                                     ✕
                                                 </button>
-                                            ) : (
-                                                <span className="text-red-400 text-xs">*</span>
                                             )}
                                         </div>
-                                        <div className={`text-xs truncate ${dict.file ? 'text-green-400' : 'text-text-muted'}`}>
-                                            {dict.file ? dict.file.name : '+ Dodaj plik'}
+                                        <div style={{ fontSize: '0.7rem', color: dict.file ? 'var(--accent)' : 'var(--text-muted)', marginTop: '0.25rem' }}>
+                                            {dict.file ? `✓ ${dict.file.name}` : '+ Dodaj słownik'}
                                         </div>
                                     </div>
                                 ))}
                             </div>
-                        </Section>
+                        </div>
 
-                        <Section title="3. Akcje">
-                            <button
-                                className="btn btn-primary w-full py-3"
-                                onClick={processFiles}
-                                disabled={!canProcess || isProcessing}
-                            >
-                                {isProcessing ? '⏳ Przetwarzanie...' : '🚀 Przetwórz plik'}
-                            </button>
-                        </Section>
+                        {/* Process Button */}
+                        <button
+                            className="btn btn-primary"
+                            onClick={processFiles}
+                            disabled={!canProcess || isProcessing}
+                            style={{ width: '100%' }}
+                        >
+                            {isProcessing ? '⏳ Przetwarzanie...' : '🚀 Przetwórz plik'}
+                        </button>
                     </div>
 
                     {/* Right Column */}
-                    <div className="space-y-6">
-                        <Section title="Status">
-                            {/* Progress */}
-                            <div className="mb-6">
-                                <div className="flex justify-between mb-2 text-sm">
-                                    <span className="text-text-gray">Postęp</span>
-                                    <span className="font-bold text-accent">{progress}%</span>
-                                </div>
-                                <div className="w-full bg-bg-input rounded-full h-2.5">
-                                    <div className="bg-accent h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
-                                </div>
-                                <div className="mt-2 text-xs text-text-muted text-center">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {/* Progress Card */}
+                        <div className="card">
+                            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>📊 Status</span>
+                                <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--accent)' }}>{progress}%</span>
+                            </div>
+                            <div className="card-body">
+                                <div style={{ marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                                     {progressText || 'Gotowy do pracy.'}
                                 </div>
-                            </div>
-
-                            {/* Error */}
-                            {error && (
-                                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-                                    ❌ {error}
-                                </div>
-                            )}
-                        </Section>
-
-                        <Section title="ℹ️ Informacje">
-                            <div className="text-sm text-text-muted space-y-4">
-                                <div>
-                                    <strong className="text-text-white block mb-1">Wymagane pliki:</strong>
-                                    <ul className="list-disc list-inside space-y-1 pl-1">
-                                        <li>📊 Plik źródłowy z zestawami perfum</li>
-                                        <li>🏷️ Słownik marek</li>
-                                        <li>📋 Słownik linii</li>
-                                        <li>💄 Słownik beauty</li>
-                                        <li>🌸 Słownik kompozycji</li>
-                                    </ul>
-                                </div>
-                                <div>
-                                    <strong className="text-text-white block mb-1">Wynik:</strong>
-                                    <p>Archiwum ZIP z kompletnym Excelem, brakującymi słownikami i raportem.</p>
+                                <div className="progress-bar">
+                                    <div className="progress-fill" style={{ width: `${progress}%` }} />
                                 </div>
                             </div>
-                        </Section>
+                        </div>
+
+                        {/* Info Card */}
+                        <div className="card" style={{ flex: 1 }}>
+                            <div className="card-header">📋 Informacje</div>
+                            <div className="card-body" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                <p style={{ marginBottom: '0.5rem' }}>
+                                    <strong>Wymagane pliki:</strong>
+                                </p>
+                                <ul style={{ paddingLeft: '1rem', lineHeight: 1.6 }}>
+                                    <li>📊 Plik źródłowy z zestawami perfum</li>
+                                    <li>🏷️ Słownik marek</li>
+                                    <li>📋 Słownik linii</li>
+                                    <li>💄 Słownik beauty</li>
+                                    <li>🌸 Słownik kompozycji</li>
+                                </ul>
+                                <p style={{ marginTop: '1rem' }}>
+                                    <strong>Wynik:</strong> Archiwum ZIP z kompletnym Excelem, brakującymi słownikami i raportem.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Error */}
+                        {error && (
+                            <div style={{
+                                padding: '0.75rem 1rem',
+                                background: 'rgba(248, 113, 113, 0.1)',
+                                border: '1px solid var(--error)',
+                                borderRadius: '8px',
+                                color: 'var(--error)',
+                                fontSize: '0.85rem'
+                            }}>
+                                ❌ {error}
+                            </div>
+                        )}
                     </div>
                 </div>
             ) : (
                 /* Results */
-                <div className="max-w-2xl mx-auto w-full">
-                    <Section>
-                        <div className="text-center py-8">
-                            <div className="text-6xl mb-4">🎉</div>
-                            <h3 className="text-xl font-bold mb-2 text-text-white">Przetwarzanie zakończone!</h3>
-                            <p className="text-text-muted mb-6">
-                                Archiwum zawiera: kompletny Excel, brakujące słowniki, plik do weryfikacji i raport.
-                            </p>
-                            <div className="flex gap-4 justify-center">
-                                <button className="btn btn-primary" onClick={downloadResult}>
-                                    📥 Pobierz wyniki (ZIP)
-                                </button>
-                                <button className="btn btn-secondary" onClick={clearAll}>
-                                    🔄 Nowy plik
-                                </button>
-                            </div>
-                        </div>
-                    </Section>
+                <div className="card" style={{ textAlign: 'center', padding: '2rem' }}>
+                    <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🎉</div>
+                    <h3 style={{ marginBottom: '0.5rem', fontSize: '1.25rem', fontWeight: 600 }}>Przetwarzanie zakończone!</h3>
+                    <p style={{ marginBottom: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                        Archiwum zawiera: kompletny Excel, brakujące słowniki, plik do weryfikacji i raport.
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+                        <button className="btn btn-primary" onClick={downloadResult}>
+                            📥 Pobierz wyniki (ZIP)
+                        </button>
+                        <button className="btn btn-secondary" onClick={clearAll}>
+                            🔄 Nowy plik
+                        </button>
+                    </div>
                 </div>
             )}
         </div>
