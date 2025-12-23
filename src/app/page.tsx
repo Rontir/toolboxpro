@@ -546,6 +546,7 @@ export default function Home() {
                       </div>
                     )}
                     <StatsPanel isOpen={statsOpen} onClose={() => setStatsOpen(false)} tools={TOOLS} />
+                    <HistoryPanel isOpen={historyOpen} onClose={() => setHistoryOpen(false)} />
                     <QueuePanel isOpen={queueOpen} onClose={() => setQueueOpen(false)} />
                     <KeyboardShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
                     <NotificationsPanel isOpen={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
