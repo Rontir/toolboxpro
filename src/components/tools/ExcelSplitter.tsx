@@ -228,13 +228,58 @@ export default function ExcelSplitter() {
         setIsProcessing(false);
     };
 
-    const downloadAll = () => {
-        results.forEach(r => {
+    const downloadAll = async () => {
+        if (results.length === 0) return;
+
+        // If only 1-2 files, download individually
+        if (results.length <= 2) {
+            results.forEach(r => {
+                const a = document.createElement('a');
+                a.href = r.url;
+                a.download = r.name;
+                a.click();
+            });
+            return;
+        }
+
+        // Create ZIP for 3+ files
+        setIsLoading(true);
+        setLoadingText('📦 Pakowanie do ZIP...');
+
+        try {
+            const JSZip = (await import('jszip')).default;
+            const zip = new JSZip();
+
+            // Add each file to ZIP
+            for (const result of results) {
+                const response = await fetch(result.url);
+                const blob = await response.blob();
+                zip.file(result.name, blob);
+            }
+
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const zipUrl = URL.createObjectURL(zipBlob);
+
+            const baseName = file?.name.replace(/\.xlsx?$/i, '') || 'podzielone';
             const a = document.createElement('a');
-            a.href = r.url;
-            a.download = r.name;
+            a.href = zipUrl;
+            a.download = `${baseName}_split_${results.length}czesci.zip`;
             a.click();
-        });
+
+            URL.revokeObjectURL(zipUrl);
+        } catch (error) {
+            console.error('Error creating ZIP:', error);
+            // Fallback to individual downloads
+            results.forEach(r => {
+                const a = document.createElement('a');
+                a.href = r.url;
+                a.download = r.name;
+                a.click();
+            });
+        } finally {
+            setIsLoading(false);
+            setLoadingText('');
+        }
     };
 
     // Helper for file input with loading
