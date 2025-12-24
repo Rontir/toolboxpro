@@ -3,9 +3,9 @@ services:
   - type: web
     name: toolboxpro-api
     runtime: python
-    buildCommand: pip install -r requirements_minimal.txt
-    startCommand: uvicorn server_minimal:app --host 0.0.0.0 --port $PORT
-    rootDir: backend
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
+    # rootDir: backend  <-- Removed to avoid path confusion
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
