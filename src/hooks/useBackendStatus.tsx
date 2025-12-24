@@ -18,6 +18,8 @@ export function useBackendStatus(checkInterval: number = 30000) {
 
     useEffect(() => {
         const checkBackend = async () => {
+            const url = apiUrl('/api/health');
+            console.log('Checking backend health at:', url);
             setStatus(prev => ({ ...prev, checking: true }));
 
             try {

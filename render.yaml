@@ -22,5 +22,8 @@ services:
       - key: NODE_VERSION
         value: "20"
       - key: NEXT_PUBLIC_API_URL
-        value: https://toolboxpro-api.onrender.com
+        fromService:
+          type: web
+          name: toolboxpro-api
+          property: url
     plan: free
