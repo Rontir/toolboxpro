@@ -56,6 +56,7 @@ export default function PikoEmpiko() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
     const [downloadFilename, setDownloadFilename] = useState<string>('piko_result.zip');
+    const [isDownloading, setIsDownloading] = useState(false);
     const [logs, setLogs] = useState<LogEntry[]>([
         { timestamp: new Date().toLocaleTimeString(), message: 'Gotowy do pracy.', type: 'info' }
     ]);
@@ -767,9 +768,13 @@ export default function PikoEmpiko() {
                         </button>
                         {downloadUrl && (
                             <button
+                                disabled={isDownloading}
                                 onClick={async () => {
                                     try {
+                                        setIsDownloading(true);
+                                        addLog('Pobieranie pliku...', 'info');
                                         const response = await fetch(downloadUrl);
+                                        if (!response.ok) throw new Error('Download failed');
                                         const blob = await response.blob();
                                         const url = window.URL.createObjectURL(blob);
                                         const a = document.createElement('a');
@@ -779,13 +784,17 @@ export default function PikoEmpiko() {
                                         a.click();
                                         window.URL.revokeObjectURL(url);
                                         document.body.removeChild(a);
+                                        addLog('Plik pobrany!', 'success');
                                     } catch (err) {
                                         addLog('Błąd pobierania pliku', 'error');
+                                    } finally {
+                                        setIsDownloading(false);
                                     }
                                 }}
                                 className="btn btn-primary"
+                                style={{ minWidth: '120px' }}
                             >
-                                ⬇️ Pobierz
+                                {isDownloading ? '⏳ Pobieranie...' : '⬇️ Pobierz'}
                             </button>
                         )}
                     </div>
