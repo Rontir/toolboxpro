@@ -325,6 +325,7 @@ export default function ProductCropper() {
     };
 
     // Improved auto-crop - specifically for white backgrounds
+    // Improved auto-crop - specifically for white backgrounds
     const autoCropImage = (
         imgData: ImageData,
         tolerance: number,
@@ -340,22 +341,30 @@ export default function ProductCropper() {
             ((height - 1) * width + width - 1) * 4 // bottom-right
         ];
 
-        // Check if background is white (most common case for product photos)
-        let isWhiteBg = true;
+        // Calculate average background color from corners
+        let rSum = 0, gSum = 0, bSum = 0, count = 0;
+
         for (const idx of corners) {
-            if (data[idx] < 250 || data[idx + 1] < 250 || data[idx + 2] < 250) {
-                isWhiteBg = false;
-                break;
-            }
+            rSum += data[idx];
+            gSum += data[idx + 1];
+            bSum += data[idx + 2];
+            count++;
         }
 
-        // Use corner average for background detection
-        const bgR = isWhiteBg ? 255 : data[0];
-        const bgG = isWhiteBg ? 255 : data[1];
-        const bgB = isWhiteBg ? 255 : data[2];
+        const bgR = Math.round(rSum / count);
+        const bgG = Math.round(gSum / count);
+        const bgB = Math.round(bSum / count);
+
+        // Relaxed white detection (230 instead of 250)
+        // If it looks like white, force it to pure white for comparison to handle slight shadows
+        const isLikelyWhite = bgR > 230 && bgG > 230 && bgB > 230;
+        const targetR = isLikelyWhite ? 255 : bgR;
+        const targetG = isLikelyWhite ? 255 : bgG;
+        const targetB = isLikelyWhite ? 255 : bgB;
 
         let minX = width, minY = height, maxX = 0, maxY = 0;
-        const tol = tolerance * 3; // Combined RGB tolerance
+        // Increase base tolerance slightly
+        const tol = (tolerance + 5) * 3;
 
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
@@ -366,10 +375,10 @@ export default function ProductCropper() {
                 const a = data[idx + 3];
 
                 // Skip transparent pixels
-                if (a < 128) continue;
+                if (a < 50) continue;
 
                 // Check if pixel differs from background
-                const diff = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+                const diff = Math.abs(r - targetR) + Math.abs(g - targetG) + Math.abs(b - targetB);
 
                 if (diff > tol) {
                     if (x < minX) minX = x;
@@ -389,11 +398,11 @@ export default function ProductCropper() {
         maxX = Math.min(width - 1, maxX + padding);
         maxY = Math.min(height - 1, maxY + padding);
 
-        // Return only if we're actually trimming something meaningful
+        // REMOVED "meaningful trim" check - always return crop if content detected
+        // Only return null if the result is suspiciously tiny (likely noise)
         const croppedW = maxX - minX;
         const croppedH = maxY - minY;
-        if (croppedW >= width * 0.98 && croppedH >= height * 0.98) return null; // No trim needed
-        if (croppedW < 50 || croppedH < 50) return null; // Too small result
+        if (croppedW < 10 || croppedH < 10) return null;
 
         return { left: minX, top: minY, right: maxX, bottom: maxY };
     };
