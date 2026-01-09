@@ -408,6 +408,8 @@ export default function ProductCropper() {
         const bgColor = getBackgroundColor();
         const isTransparent = bgColor === 'transparent';
 
+        let autoCropFailures = 0;
+
         for (let i = 0; i < files.length; i++) {
             const { file } = files[i];
             setProgress(Math.round(((i + 1) / files.length) * 100));
@@ -441,6 +443,10 @@ export default function ProductCropper() {
                         srcY = cropResult.top;
                         srcW = cropResult.right - cropResult.left;
                         srcH = cropResult.bottom - cropResult.top;
+                    } else {
+                        // Auto-crop failed (no background detected or too small)
+                        console.warn(`Auto-crop skipped for ${file.name}: No clear background detected or result too small.`);
+                        autoCropFailures++;
                     }
                 }
 
@@ -560,6 +566,11 @@ export default function ProductCropper() {
         // Update stats counter
         if (results.length > 0) {
             recordUsage('cropper', results.length);
+        }
+
+        // Notify user about auto-crop failures
+        if (autoCropFailures > 0) {
+            alert(`⚠️ Uwaga: Dla ${autoCropFailures} zdjęć nie udało się wykryć jednolitego tła. Zostały przetworzone bez przycinania.\n\nSpróbuj zwiększyć tolerancję.`);
         }
     };
 
