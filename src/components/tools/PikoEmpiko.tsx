@@ -203,7 +203,7 @@ export default function PikoEmpiko() {
                         setDownloadFilename(`piko_images_${timestamp}.zip`);
                         setDownloadUrl(apiUrl(`/api/download/${job_id}`));
                         addLog('Zakończono!', 'success');
-                        if (soundEnabled) new Audio().play().catch(() => { });
+                        if (soundEnabled) playSound();
                         showSuccess('Plik gotowy!');
                     } else if (pData.status === 'error') {
                         clearInterval(poll);
