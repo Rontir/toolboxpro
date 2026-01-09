@@ -325,7 +325,7 @@ export default function ProductCropper() {
     };
 
     // Improved auto-crop - specifically for white backgrounds
-    // Improved auto-crop - specifically for white backgrounds
+    // Uses edge sampling to detect background color more accurately
     const autoCropImage = (
         imgData: ImageData,
         tolerance: number,
@@ -333,38 +333,55 @@ export default function ProductCropper() {
     ): { left: number; top: number; right: number; bottom: number } | null => {
         const { width, height, data } = imgData;
 
-        // Sample background from multiple corners to be more accurate
-        const corners = [
-            0, // top-left
-            (width - 1) * 4, // top-right
-            ((height - 1) * width) * 4, // bottom-left
-            ((height - 1) * width + width - 1) * 4 // bottom-right
-        ];
+        // Sample background from all edges (not just corners)
+        // This is more robust when products are near corners
+        const samples: number[][] = [];
+        const sampleCount = 10; // samples per edge
 
-        // Calculate average background color from corners
-        let rSum = 0, gSum = 0, bSum = 0, count = 0;
-
-        for (const idx of corners) {
-            rSum += data[idx];
-            gSum += data[idx + 1];
-            bSum += data[idx + 2];
-            count++;
+        // Top edge
+        for (let i = 0; i < sampleCount; i++) {
+            const x = Math.floor((i / sampleCount) * width);
+            const idx = x * 4;
+            samples.push([data[idx], data[idx + 1], data[idx + 2]]);
+        }
+        // Bottom edge
+        for (let i = 0; i < sampleCount; i++) {
+            const x = Math.floor((i / sampleCount) * width);
+            const idx = ((height - 1) * width + x) * 4;
+            samples.push([data[idx], data[idx + 1], data[idx + 2]]);
+        }
+        // Left edge
+        for (let i = 0; i < sampleCount; i++) {
+            const y = Math.floor((i / sampleCount) * height);
+            const idx = (y * width) * 4;
+            samples.push([data[idx], data[idx + 1], data[idx + 2]]);
+        }
+        // Right edge
+        for (let i = 0; i < sampleCount; i++) {
+            const y = Math.floor((i / sampleCount) * height);
+            const idx = (y * width + width - 1) * 4;
+            samples.push([data[idx], data[idx + 1], data[idx + 2]]);
         }
 
-        const bgR = Math.round(rSum / count);
-        const bgG = Math.round(gSum / count);
-        const bgB = Math.round(bSum / count);
+        // Calculate median background color (more robust than average)
+        samples.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
+        const medianIdx = Math.floor(samples.length / 2);
+        const bgR = samples[medianIdx][0];
+        const bgG = samples[medianIdx][1];
+        const bgB = samples[medianIdx][2];
 
-        // Relaxed white detection (230 instead of 250)
-        // If it looks like white, force it to pure white for comparison to handle slight shadows
-        const isLikelyWhite = bgR > 230 && bgG > 230 && bgB > 230;
+        // Relaxed white detection (220 instead of 230)
+        const isLikelyWhite = bgR > 220 && bgG > 220 && bgB > 220;
         const targetR = isLikelyWhite ? 255 : bgR;
         const targetG = isLikelyWhite ? 255 : bgG;
         const targetB = isLikelyWhite ? 255 : bgB;
 
         let minX = width, minY = height, maxX = 0, maxY = 0;
-        // Increase base tolerance slightly
-        const tol = (tolerance + 5) * 3;
+
+        // More aggressive tolerance for white backgrounds
+        // For white: higher tolerance to catch shadows and gradients
+        const baseTol = isLikelyWhite ? 80 : 40;
+        const tol = baseTol + (tolerance * 2);
 
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
@@ -390,7 +407,10 @@ export default function ProductCropper() {
         }
 
         // Check if we found any content
-        if (maxX <= minX || maxY <= minY) return null;
+        if (maxX <= minX || maxY <= minY) {
+            console.log('Auto-crop: No content found');
+            return null;
+        }
 
         // Add padding
         minX = Math.max(0, minX - padding);
@@ -398,12 +418,15 @@ export default function ProductCropper() {
         maxX = Math.min(width - 1, maxX + padding);
         maxY = Math.min(height - 1, maxY + padding);
 
-        // REMOVED "meaningful trim" check - always return crop if content detected
         // Only return null if the result is suspiciously tiny (likely noise)
         const croppedW = maxX - minX;
         const croppedH = maxY - minY;
-        if (croppedW < 10 || croppedH < 10) return null;
+        if (croppedW < 10 || croppedH < 10) {
+            console.log('Auto-crop: Result too small', croppedW, croppedH);
+            return null;
+        }
 
+        console.log(`Auto-crop: Found content at (${minX},${minY}) to (${maxX},${maxY}), bg: rgb(${bgR},${bgG},${bgB}), isWhite: ${isLikelyWhite}`);
         return { left: minX, top: minY, right: maxX, bottom: maxY };
     };
 

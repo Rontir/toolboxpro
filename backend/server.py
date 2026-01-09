@@ -190,9 +190,13 @@ async def piko_empiko(
         }
         
         def process_task(jid, content, idx, main, extra, options):
+            import logging
+            import traceback
             try:
+                logging.info(f"[{jid}] Starting process_safe...")
                 from backend_processor import PikoEmpiko
-                output_io = PikoEmpiko.process_safe(
+                # Returns path to the generated ZIP file
+                output_path = PikoEmpiko.process_safe(
                     content, idx, main, extra, 
                     progress_callback=lambda c, t: update_progress(jid, c, t),
                     batch_size=options['batch_size'],
@@ -201,21 +205,19 @@ async def piko_empiko(
                     convert_format=options['convert_format'],
                     max_resolution=options['max_resolution'],
                     resume=options['resume'],
-                    pim_version=options['pim_version']
+                    pim_version=options['pim_version'],
+                    job_id=jid
                 )
                 
-                # Save result to temp file
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"piko_images_{timestamp}.zip"
-                temp_path = f"temp_{jid}_{filename}"
+                logging.info(f"[{jid}] process_safe completed: {output_path}")
+                filename = os.path.basename(output_path)
                 
-                with open(temp_path, "wb") as f:
-                    f.write(output_io.getvalue())
-                    
                 jobs[jid]['status'] = 'completed'
-                jobs[jid]['result'] = {'file_path': temp_path, 'filename': filename}
+                jobs[jid]['result'] = {'file_path': output_path, 'filename': filename}
                 jobs[jid]['progress'] = 100
             except Exception as e:
+                logging.error(f"[{jid}] Error in process_task: {e}")
+                logging.error(traceback.format_exc())
                 jobs[jid]['status'] = 'error'
                 jobs[jid]['error'] = str(e)
 

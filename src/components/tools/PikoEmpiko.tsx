@@ -182,8 +182,16 @@ export default function PikoEmpiko() {
                 try {
                     const pRes = await fetch(apiUrl(`/api/progress/${job_id}`));
                     const pData = await pRes.json();
-                    setProgress(pData.progress || 0);
-                    setStatus(`${pData.progress}%`);
+
+                    // Handle job not found
+                    if (pData.error) {
+                        addLog(`Błąd: ${pData.error}`, 'error');
+                        return; // Stay in the polling loop, job might appear
+                    }
+
+                    const prog = pData.progress ?? 0;
+                    setProgress(prog);
+                    setStatus(`${prog}%`);
 
                     if (pData.status === 'completed') {
                         clearInterval(poll);
@@ -244,8 +252,15 @@ export default function PikoEmpiko() {
                 try {
                     const pRes = await fetch(apiUrl(`/api/progress/${job_id}`));
                     const pData = await pRes.json();
-                    setProgress(pData.progress || 0);
-                    setStatus(`${pData.progress}%`);
+
+                    if (pData.error) {
+                        addLog(`Błąd: ${pData.error}`, 'error');
+                        return;
+                    }
+
+                    const prog = pData.progress ?? 0;
+                    setProgress(prog);
+                    setStatus(`${prog}%`);
 
                     if (pData.status === 'completed') {
                         clearInterval(poll);

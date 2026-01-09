@@ -404,16 +404,14 @@ class PikoEmpiko:
                      progress_callback=None, batch_size: int = 0, create_zip: bool = False,
                      compress_jpg: bool = False, convert_format: str = 'jpg',
                      max_resolution: int = 0, resume: bool = False,
-                     pim_version: str = 'PIM3') -> io.BytesIO:
+                     pim_version: str = 'PIM3', job_id: str = None) -> str:
         """
-        Full PikoEmpiko download with:
-        - Result Excel with downloaded file paths
-        - Batch splitting into packages
-        - ZIP each batch option
-        - Progress tracking
-        - Error reporting
+        Full PikoEmpiko download with disk-based processing to avoid OOM.
+        Returns path to the generated ZIP file.
         """
         from datetime import datetime
+        import tempfile
+        import uuid
         
         df = pd.read_excel(io.BytesIO(file_content), dtype=str)
         total_rows = len(df)
@@ -424,9 +422,14 @@ class PikoEmpiko:
         
         lock = threading.Lock()
         
+        # Create temp directory for this job (using system temp for Render compatibility)
+        base_temp = tempfile.gettempdir()
+        job_temp_dir = os.path.join(base_temp, "piko_processing", job_id if job_id else str(uuid.uuid4()))
+        os.makedirs(job_temp_dir, exist_ok=True)
+        
         # Results tracking
         results = []
-        downloaded_files = []
+        downloaded_files = [] # List of filenames
         failed_downloads = []
         
         def process_row(row_data):
@@ -447,18 +450,26 @@ class PikoEmpiko:
                 'Błędy': ''
             }
             errors = []
-            downloaded = []
             
+            # Helper to save file
+            def save_image(url, filename):
+                data, error_msg = cls.download_file(url, session)
+                if data:
+                    file_path = os.path.join(job_temp_dir, filename)
+                    with open(file_path, "wb") as f:
+                        f.write(data)
+                    return True, None
+                return False, error_msg
+
             # Main photo
             main_url = str(row.get(col_main, '')).strip()
             if main_url and main_url.lower() != 'nan':
-                data, error_msg = cls.download_file(main_url, session)
-                if data:
-                    filename = f"{indeks}.jpg"
+                filename = f"{indeks}.jpg"
+                success, error_msg = save_image(main_url, filename)
+                if success:
                     result['Zdjęcie okładki/produktu'] = filename
                     with lock:
-                        downloaded_files.append((filename, data))
-                        downloaded.append(filename)
+                        downloaded_files.append(filename)
                 else:
                     errors.append(f"Główne: {error_msg}")
                     with lock:
@@ -470,13 +481,12 @@ class PikoEmpiko:
             for i, col in enumerate(extra_cols):
                 url = str(row.get(col, '')).strip()
                 if url and url.lower() != 'nan':
-                    data, error_msg = cls.download_file(url, session)
-                    if data:
-                        filename = f"{indeks}_{i+1}.jpg"
+                    filename = f"{indeks}_{i+1}.jpg"
+                    success, error_msg = save_image(url, filename)
+                    if success:
                         extra_filenames.append(filename)
                         with lock:
-                            downloaded_files.append((filename, data))
-                            downloaded.append(filename)
+                            downloaded_files.append(filename)
                     else:
                         errors.append(f"Dodatkowe {i+1}: {error_msg}")
                         with lock:
@@ -492,21 +502,21 @@ class PikoEmpiko:
             
             return result
 
-        # Process all rows
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        # Process all rows with reduced workers to save memory
+        with ThreadPoolExecutor(max_workers=4) as executor:
             list(executor.map(process_row, list(df.iterrows())))
         
         # Create result DataFrame
         df_result = pd.DataFrame(results)
         
-        # Create output ZIP
-        output_zip = io.BytesIO()
+        # Create output ZIP on disk (using system temp for Render compatibility)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_zip_path = os.path.join(base_temp, f"piko_result_{job_id}_{timestamp}.zip")
         
         # Calculate batch info
         total_products = len(df_result)
         
-        with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             
             # === BATCH SPLITTING LOGIC ===
             if batch_size > 0 and total_products > batch_size:
@@ -522,32 +532,34 @@ class PikoEmpiko:
                     
                     # Get files for this batch
                     batch_indices = set(df_batch['Indeks MDM'].tolist())
-                    batch_files = [(fn, data) for fn, data in downloaded_files 
+                    batch_files = [fn for fn in downloaded_files 
                                    if fn.split('.')[0].split('_')[0] in batch_indices]
                     
                     if create_zip:
                         # Create separate ZIP for each batch
-                        batch_zip = io.BytesIO()
-                        with zipfile.ZipFile(batch_zip, 'w', zipfile.ZIP_DEFLATED) as bzipf:
-                            for filename, data in batch_files:
-                                bzipf.writestr(filename, data)
-                        batch_zip.seek(0)
-                        zipf.writestr(f"{batch_name}.zip", batch_zip.read())
+                        batch_zip_path = os.path.join(job_temp_dir, f"{batch_name}.zip")
+                        with zipfile.ZipFile(batch_zip_path, 'w', zipfile.ZIP_DEFLATED) as bzipf:
+                            for filename in batch_files:
+                                file_path = os.path.join(job_temp_dir, filename)
+                                if os.path.exists(file_path):
+                                    bzipf.write(file_path, filename)
+                        
+                        zipf.write(batch_zip_path, f"{batch_name}.zip")
                     else:
                         # Add files to folder in main ZIP
-                        for filename, data in batch_files:
-                            zipf.writestr(f"{batch_name}/{filename}", data)
+                        for filename in batch_files:
+                            file_path = os.path.join(job_temp_dir, filename)
+                            if os.path.exists(file_path):
+                                zipf.write(file_path, f"{batch_name}/{filename}")
                     
                     # Create batch Excel
                     batch_excel = io.BytesIO()
                     with pd.ExcelWriter(batch_excel, engine='openpyxl') as writer:
                         df_batch_success = df_batch[df_batch['Błędy'].fillna('') == ''].copy()
-                        # PIM4: add Typ column to batch results
                         if pim_version == 'PIM4':
                             df_batch_success.insert(0, 'Typ', 'singiel')
                         df_batch_success.to_excel(writer, index=False, sheet_name='Wynik')
                         
-                        # Errors for this batch (with HTTP error codes)
                         batch_errors = [e for e in failed_downloads if e[1] in batch_indices]
                         if batch_errors:
                             df_batch_errors = pd.DataFrame([{
@@ -564,23 +576,21 @@ class PikoEmpiko:
                     logging.info(f"  ✅ Paczka {batch_num + 1}: {len(df_batch)} produktów, {len(batch_files)} zdjęć")
             else:
                 # No batching - add all files to root
-                for filename, data in downloaded_files:
-                    zipf.writestr(filename, data)
+                for filename in downloaded_files:
+                    file_path = os.path.join(job_temp_dir, filename)
+                    if os.path.exists(file_path):
+                        zipf.write(file_path, filename)
             
-            # === MAIN RESULT EXCEL (always created) ===
+            # === MAIN RESULT EXCEL ===
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                # Main results (only successful)
                 df_success = df_result[df_result['Błędy'].fillna('') == ''].copy()
-                
-                # PIM4 format: add 'Typ' column with 'singiel' as first column
                 if pim_version == 'PIM4':
                     df_success.insert(0, 'Typ', 'singiel')
                     logging.info("📋 Format PIM4: dodano kolumnę 'Typ' z wartością 'singiel'")
                 
                 df_success.to_excel(writer, index=False, sheet_name='Wynik')
                 
-                # All results including errors - also add Typ for PIM4
                 df_all = df_result.copy()
                 if pim_version == 'PIM4':
                     df_all.insert(0, 'Typ', 'singiel')
@@ -599,106 +609,18 @@ class PikoEmpiko:
                     '📦 Liczba paczek': (total_products + batch_size - 1) // batch_size if batch_size > 0 else 1,
                     '% Sukcesu': f"{(success_count/total_rows*100) if total_rows else 0:.1f}%"
                 }])
-                summary_data.to_excel(writer, index=False, sheet_name='📊 Podsumowanie')
-                
-                # Errors sheet with FULL URLs and HTTP error codes
-                if failed_downloads:
-                    df_errors = pd.DataFrame([{
-                        'Indeks MDM': idx,
-                        'Typ zdjęcia': 'Zdjęcie główne' if typ == 'main' else 'Zdjęcie dodatkowe',
-                        'URL źródłowy': url,
-                        'Błąd': error_code,
-                        'Status': '❌ Nie pobrano'
-                    } for url, idx, typ, error_code in failed_downloads])
-                    df_errors.to_excel(writer, index=False, sheet_name='❌ Błędy')
-            
+                summary_data.to_excel(writer, index=False, sheet_name='Podsumowanie')
+
             excel_buffer.seek(0)
-            zipf.writestr(f"wynik_{timestamp}.xlsx", excel_buffer.read())
+            zipf.writestr("RAPORT_CALOSCIOWY.xlsx", excel_buffer.read())
+
+        # Cleanup temp dir
+        try:
+            shutil.rmtree(job_temp_dir)
+        except Exception as e:
+            logging.error(f"Failed to cleanup temp dir {job_temp_dir}: {e}")
             
-            # === SEPARATE FAILED DOWNLOADS EXCEL ===
-            if failed_downloads:
-                failed_excel = io.BytesIO()
-                with pd.ExcelWriter(failed_excel, engine='openpyxl') as writer:
-                    # Sheet 1: Aggregated by Index (grouped)
-                    failed_by_index = {}
-                    for url, idx, typ, error_code in failed_downloads:
-                        if idx not in failed_by_index:
-                            failed_by_index[idx] = {'main': '', 'main_error': '', 'extras': [], 'extra_errors': []}
-                        if typ == 'main':
-                            failed_by_index[idx]['main'] = url
-                            failed_by_index[idx]['main_error'] = error_code
-                        else:
-                            failed_by_index[idx]['extras'].append(url)
-                            failed_by_index[idx]['extra_errors'].append(error_code)
-                    
-                    df_grouped = pd.DataFrame([{
-                        'Indeks MDM': idx,
-                        'Zdjęcie główne (nieudane)': data['main'],
-                        'Błąd główne': data['main_error'],
-                        'Zdjęcia dodatkowe (nieudane)': ';'.join(data['extras']),
-                        'Błędy dodatkowe': ';'.join(data['extra_errors'])
-                    } for idx, data in failed_by_index.items()])
-                    df_grouped.to_excel(writer, index=False, sheet_name='📋 Pogrupowane')
-                    
-                    # Sheet 2: Detailed list with error codes
-                    df_detailed = pd.DataFrame([{
-                        'Indeks MDM': idx,
-                        'Typ zdjęcia': 'Główne' if typ == 'main' else 'Dodatkowe',
-                        'URL źródłowy': url,
-                        'Błąd': error_code,
-                        'Status': '❌ Nie pobrano'
-                    } for url, idx, typ, error_code in failed_downloads])
-                    df_detailed.to_excel(writer, index=False, sheet_name='📝 Szczegóły')
-                    
-                    # Sheet 3: Summary
-                    main_failed = sum(1 for _, _, t, _ in failed_downloads if t == 'main')
-                    extra_failed = sum(1 for _, _, t, _ in failed_downloads if t == 'extra')
-                    
-                    # Count error types
-                    error_counts = {}
-                    for _, _, _, err in failed_downloads:
-                        error_counts[err] = error_counts.get(err, 0) + 1
-                    
-                    summary_rows = [{
-                        '📊 Metryka': 'Razem nieudanych pobrań',
-                        'Wartość': len(failed_downloads)
-                    }, {
-                        '📊 Metryka': 'Zdjęć głównych',
-                        'Wartość': main_failed
-                    }, {
-                        '📊 Metryka': 'Zdjęć dodatkowych',
-                        'Wartość': extra_failed
-                    }, {
-                        '📊 Metryka': 'Unikalnych indeksów',
-                        'Wartość': len(failed_by_index)
-                    }]
-                    # Add error type breakdown
-                    for err_type, count in sorted(error_counts.items(), key=lambda x: -x[1]):
-                        summary_rows.append({'📊 Metryka': f'Błąd: {err_type}', 'Wartość': count})
-                    
-                    df_summary = pd.DataFrame(summary_rows)
-                    df_summary.to_excel(writer, index=False, sheet_name='📊 Statystyki')
-                
-                failed_excel.seek(0)
-                zipf.writestr(f"nieudane_pobrania_{timestamp}.xlsx", failed_excel.read())
-                logging.info(f"📄 Utworzono nieudane_pobrania.xlsx z {len(failed_downloads)} błędami")
-            
-            # Add summary report
-            report = f"""PikoEmpiko Download Report
-=====================================
-Timestamp: {timestamp}
-Total rows: {total_rows}
-Successfully downloaded: {success_count}
-Failed: {failed_count}
-Total photos: {total_photos}
-Batch size: {batch_size if batch_size > 0 else 'No batching'}
-Number of batches: {(total_products + batch_size - 1) // batch_size if batch_size > 0 else 1}
-=====================================
-"""
-            zipf.writestr("_raport.txt", report.encode('utf-8'))
-        
-        output_zip.seek(0)
-        return output_zip
+        return output_zip_path
 
 class PikoEmpikoLocal:
     """
