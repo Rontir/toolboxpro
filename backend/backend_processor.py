@@ -502,8 +502,9 @@ class PikoEmpiko:
             
             return result
 
-        # Process all rows with reduced workers to save memory
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        # Process all rows with minimal workers to prevent OOM on Render (512MB limit)
+        logging.info(f"Processing {total_rows} rows with 2 workers...")
+        with ThreadPoolExecutor(max_workers=2) as executor:
             list(executor.map(process_row, list(df.iterrows())))
         
         # Create result DataFrame
