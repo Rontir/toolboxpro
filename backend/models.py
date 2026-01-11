@@ -39,7 +39,8 @@ class User(Base):
     tool_permissions = relationship(
         "ToolPermission",
         back_populates="user",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        foreign_keys="ToolPermission.user_id"
     )
     
     def has_tool_access(self, tool_id: str) -> bool:
