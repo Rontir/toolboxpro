@@ -14,20 +14,39 @@ import json
 from typing import List, Dict, Optional
 # from backend_processor import process_perfume_data, EanChecker, StructureMatcher, PikoEmpiko, PikoEmpikoLocal
 
-# Auth imports
-from database import get_db, init_db
-from models import User, ToolPermission, UserRole, RESTRICTED_TOOLS
-from auth import (
-    hash_password, verify_password, create_tokens, verify_token,
-    UserCreate, UserLogin, UserResponse, Token, GrantToolRequest
-)
+# Auth imports - wrapped in try-except for debugging
+AUTH_AVAILABLE = False
+try:
+    from database import get_db, init_db
+    from models import User, ToolPermission, UserRole, RESTRICTED_TOOLS
+    from auth import (
+        hash_password, verify_password, create_tokens, verify_token,
+        UserCreate, UserLogin, UserResponse, Token, GrantToolRequest
+    )
+    AUTH_AVAILABLE = True
+    print("✅ Auth modules loaded successfully")
+except Exception as e:
+    print(f"⚠️ Auth modules failed to load: {e}")
+    import traceback
+    traceback.print_exc()
+    # Define dummy classes to prevent import errors
+    class UserCreate: pass
+    class UserLogin: pass
+    class Token: pass
+    class GrantToolRequest: pass
+    RESTRICTED_TOOLS = []
 
 app = FastAPI(title="ToolBox Pro API")
 
-# Initialize database on startup
+# Initialize database on startup (only if auth is available)
 @app.on_event("startup")
 def startup_event():
-    init_db()
+    if AUTH_AVAILABLE:
+        try:
+            init_db()
+            print("✅ Database initialized")
+        except Exception as e:
+            print(f"⚠️ Database init failed: {e}")
 
 # Security
 security = HTTPBearer(auto_error=False)
@@ -73,7 +92,8 @@ async def health_check():
     return JSONResponse(status_code=200, content={
         "status": "ok",
         "service": "ToolBox Pro API",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "auth_available": AUTH_AVAILABLE
     })
 
 # ==================== AUTHENTICATION ENDPOINTS ====================
@@ -105,6 +125,9 @@ def require_admin(user: User = Depends(require_user)) -> User:
 @app.post("/api/auth/register", response_model=Token)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """Register a new user."""
+    if not AUTH_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Auth system not available - check server logs")
+    
     # Check if email already exists
     existing = db.query(User).filter(User.email == user_data.email).first()
     if existing:
