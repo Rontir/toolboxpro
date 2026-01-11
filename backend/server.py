@@ -133,12 +133,16 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
+    # Check if this email should be auto-promoted to admin
+    admin_emails = os.getenv("ADMIN_EMAILS", "xmikezien@gmail.com").lower().split(",")
+    user_role = UserRole.ADMIN if user_data.email.lower() in admin_emails else UserRole.USER
+    
     # Create user
     user = User(
         email=user_data.email,
         password_hash=hash_password(user_data.password),
         display_name=user_data.display_name or user_data.email.split("@")[0],
-        role=UserRole.USER
+        role=user_role
     )
     db.add(user)
     db.commit()
