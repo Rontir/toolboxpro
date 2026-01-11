@@ -55,12 +55,15 @@ class GrantToolRequest(BaseModel):
 
 # Password utilities
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return pwd_context.hash(password)
+    """Hash a password using bcrypt. Truncates to 72 bytes (bcrypt limit)."""
+    # Bcrypt only uses the first 72 bytes of a password
+    truncated = password[:72]
+    return pwd_context.hash(truncated)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    truncated = plain_password[:72]
+    return pwd_context.verify(truncated, hashed_password)
 
 # JWT utilities
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
