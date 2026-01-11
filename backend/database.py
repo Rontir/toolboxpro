@@ -3,12 +3,18 @@ Database connection and session management for ToolBox Pro.
 Uses PostgreSQL on Render, falls back to SQLite for local development.
 """
 import os
+import tempfile
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# Database URL from environment or SQLite fallback
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./toolboxpro.db")
+# Database URL from environment or SQLite fallback in temp directory
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    # Use temp directory for SQLite (works on Render's ephemeral filesystem)
+    db_path = os.path.join(tempfile.gettempdir(), "toolboxpro.db")
+    DATABASE_URL = f"sqlite:///{db_path}"
+    print(f"📁 Using SQLite database at: {db_path}")
 
 # Fix for Render's postgres:// prefix (SQLAlchemy needs postgresql://)
 if DATABASE_URL.startswith("postgres://"):
