@@ -4,7 +4,7 @@ JWT token management and password hashing.
 """
 import os
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -44,7 +44,7 @@ class UserResponse(BaseModel):
     display_name: Optional[str]
     role: str
     is_active: bool
-    tool_permissions: list[str] = []
+    tool_permissions: List[str] = []
     
     class Config:
         from_attributes = True
