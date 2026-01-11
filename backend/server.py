@@ -125,31 +125,42 @@ def require_admin(user: User = Depends(require_user)) -> User:
 @app.post("/api/auth/register", response_model=Token)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """Register a new user."""
+    import traceback
+    import logging
+    
     if not AUTH_AVAILABLE:
         raise HTTPException(status_code=503, detail="Auth system not available - check server logs")
     
-    # Check if email already exists
-    existing = db.query(User).filter(User.email == user_data.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Check if this email should be auto-promoted to admin
-    admin_emails = os.getenv("ADMIN_EMAILS", "xmikezien@gmail.com").lower().split(",")
-    user_role = UserRole.ADMIN if user_data.email.lower() in admin_emails else UserRole.USER
-    
-    # Create user
-    user = User(
-        email=user_data.email,
-        password_hash=hash_password(user_data.password),
-        display_name=user_data.display_name or user_data.email.split("@")[0],
-        role=user_role
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    
-    # Return tokens
-    return create_tokens(user.id, user.email, user.role.value)
+    try:
+        # Check if email already exists
+        existing = db.query(User).filter(User.email == user_data.email).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Check if this email should be auto-promoted to admin
+        admin_emails = os.getenv("ADMIN_EMAILS", "xmikezien@gmail.com").lower().split(",")
+        user_role = UserRole.ADMIN if user_data.email.lower() in admin_emails else UserRole.USER
+        
+        # Create user
+        user = User(
+            email=user_data.email,
+            password_hash=hash_password(user_data.password),
+            display_name=user_data.display_name or user_data.email.split("@")[0],
+            role=user_role
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        
+        # Return tokens
+        return create_tokens(user.id, user.email, user.role.value)
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
+    except Exception as e:
+        error_msg = f"Registration error: {str(e)}\n{traceback.format_exc()}"
+        logging.error(error_msg)
+        print(error_msg)  # Also print for Render logs
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 @app.post("/api/auth/login", response_model=Token)
 async def login(credentials: UserLogin, db: Session = Depends(get_db)):
