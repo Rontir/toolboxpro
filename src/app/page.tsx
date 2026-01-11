@@ -41,6 +41,9 @@ import PriceCalculator from '@/components/tools/PriceCalculator';
 import SeoMetaGenerator from '@/components/tools/SeoMetaGenerator';
 import DesignToggle from '@/components/DesignToggle';
 import { BackendStatusIndicator } from '@/hooks/useBackendStatus';
+import UserMenu from '@/components/auth/UserMenu';
+import AdminPanel from '@/components/admin/AdminPanel';
+import { useAuth, RESTRICTED_TOOLS } from '@/contexts/AuthContext';
 
 type ToolId = 'dashboard' | 'piko-empiko' | 'image-converter' | 'excel-splitter' | 'html-fixer' | 'ean-checker' | 'json-html' | 'desc-html' | 'perfume' | 'cropper' | 'struktur' | 'compare' | 'joiner' | 'translator' | 'emoji-remover' | 'batch-renamer' | 'batch-processor' | 'price-calc' | 'seo-meta';
 
@@ -193,8 +196,11 @@ export default function Home() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [spotlightSelectedIndex, setSpotlightSelectedIndex] = useState(0);
+
+  const { hasToolAccess } = useAuth();
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -271,10 +277,28 @@ export default function Home() {
 
   const currentTool = TOOLS.find(t => t.id === activeTool);
 
-  const filteredTools = TOOLS.filter(t =>
-    t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.desc.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Map tool IDs to permission IDs
+  const toolPermissionMap: Record<string, string> = {
+    'piko-empiko': 'piko_empiko',
+    'struktur': 'structure_matcher'
+  };
+
+  // Filter tools based on search AND permissions
+  const filteredTools = TOOLS.filter(t => {
+    // Check search query
+    const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.desc.toLowerCase().includes(searchQuery.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    // Check permissions for restricted tools
+    const permissionId = toolPermissionMap[t.id];
+    if (permissionId && !hasToolAccess(permissionId)) {
+      return false;
+    }
+
+    return true;
+  });
 
   const handleToolClick = (toolId: ToolId) => {
     setActiveTool(toolId);
@@ -353,7 +377,7 @@ export default function Home() {
                           <Tooltip text="Język / Language">
                             <LanguageSwitcher />
                           </Tooltip>
-                          <div className="user-avatar">👤</div>
+                          <UserMenu onOpenAdmin={() => setAdminPanelOpen(true)} />
                         </div>
                       </nav>
 
@@ -550,6 +574,7 @@ export default function Home() {
                     <QueuePanel isOpen={queueOpen} onClose={() => setQueueOpen(false)} />
                     <KeyboardShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
                     <NotificationsPanel isOpen={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
+                    <AdminPanel isOpen={adminPanelOpen} onClose={() => setAdminPanelOpen(false)} />
                   </DroppedFileProvider>
                 </NotificationsProvider>
               </HistoryProvider>

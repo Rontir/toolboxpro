@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import PWARegister from "@/components/PWARegister";
-import { ThemeProvider } from "@/components/Theme";
+import { Providers } from "@/components/Providers";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const geistSans = Geist({
@@ -75,12 +75,12 @@ export default function RootLayout({
   return (
     <html lang="pl" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning>
-        <ThemeProvider>
+        <Providers>
           <ErrorBoundary>
             <PWARegister />
             {children}
           </ErrorBoundary>
-        </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );

@@ -1,7 +1,9 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
 import os
 import io
 import zipfile
@@ -9,10 +11,26 @@ import uuid
 from datetime import datetime
 import shutil
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 # from backend_processor import process_perfume_data, EanChecker, StructureMatcher, PikoEmpiko, PikoEmpikoLocal
 
+# Auth imports
+from database import get_db, init_db
+from models import User, ToolPermission, UserRole, RESTRICTED_TOOLS
+from auth import (
+    hash_password, verify_password, create_tokens, verify_token,
+    UserCreate, UserLogin, UserResponse, Token, GrantToolRequest
+)
+
 app = FastAPI(title="ToolBox Pro API")
+
+# Initialize database on startup
+@app.on_event("startup")
+def startup_event():
+    init_db()
+
+# Security
+security = HTTPBearer(auto_error=False)
 
 # Job Store
 jobs: Dict[str, dict] = {}
@@ -57,6 +75,204 @@ async def health_check():
         "service": "ToolBox Pro API",
         "timestamp": datetime.now().isoformat()
     })
+
+# ==================== AUTHENTICATION ENDPOINTS ====================
+
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """Get current user from JWT token."""
+    if not credentials:
+        return None
+    token_data = verify_token(credentials.credentials)
+    if not token_data or not token_data.user_id:
+        return None
+    return db.query(User).filter(User.id == token_data.user_id).first()
+
+def require_user(user: Optional[User] = Depends(get_current_user)) -> User:
+    """Require authenticated user."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+def require_admin(user: User = Depends(require_user)) -> User:
+    """Require admin role."""
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+@app.post("/api/auth/register", response_model=Token)
+async def register(user_data: UserCreate, db: Session = Depends(get_db)):
+    """Register a new user."""
+    # Check if email already exists
+    existing = db.query(User).filter(User.email == user_data.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Create user
+    user = User(
+        email=user_data.email,
+        password_hash=hash_password(user_data.password),
+        display_name=user_data.display_name or user_data.email.split("@")[0],
+        role=UserRole.USER
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    # Return tokens
+    return create_tokens(user.id, user.email, user.role.value)
+
+@app.post("/api/auth/login", response_model=Token)
+async def login(credentials: UserLogin, db: Session = Depends(get_db)):
+    """Login and get tokens."""
+    user = db.query(User).filter(User.email == credentials.email).first()
+    if not user or not verify_password(credentials.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is disabled")
+    
+    return create_tokens(user.id, user.email, user.role.value)
+
+@app.post("/api/auth/refresh", response_model=Token)
+async def refresh_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Refresh access token using refresh token."""
+    token_data = verify_token(credentials.credentials, token_type="refresh")
+    if not token_data or not token_data.user_id:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    
+    user = db.query(User).filter(User.id == token_data.user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or disabled")
+    
+    return create_tokens(user.id, user.email, user.role.value)
+
+@app.get("/api/auth/me")
+async def get_me(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    """Get current user data."""
+    tool_permissions = [p.tool_id for p in user.tool_permissions]
+    return {
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name,
+        "role": user.role.value,
+        "is_active": user.is_active,
+        "tool_permissions": tool_permissions,
+        "restricted_tools": RESTRICTED_TOOLS
+    }
+
+@app.get("/api/auth/tools")
+async def get_accessible_tools(user: Optional[User] = Depends(get_current_user)):
+    """Get list of tools user can access."""
+    if not user:
+        # Guest - no restricted tools
+        accessible = []
+    elif user.role in [UserRole.ADMIN, UserRole.PREMIUM]:
+        # Full access
+        accessible = RESTRICTED_TOOLS
+    else:
+        # Check explicit permissions
+        accessible = [p.tool_id for p in user.tool_permissions]
+    
+    return {
+        "accessible_tools": accessible,
+        "all_restricted": RESTRICTED_TOOLS
+    }
+
+# ==================== ADMIN ENDPOINTS ====================
+
+@app.get("/api/admin/users")
+async def list_users(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """List all users (admin only)."""
+    users = db.query(User).all()
+    return [{
+        "id": u.id,
+        "email": u.email,
+        "display_name": u.display_name,
+        "role": u.role.value,
+        "is_active": u.is_active,
+        "created_at": u.created_at.isoformat() if u.created_at else None,
+        "tool_permissions": [p.tool_id for p in u.tool_permissions]
+    } for u in users]
+
+@app.post("/api/admin/grant-tool")
+async def grant_tool_access(
+    request: GrantToolRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Grant a user access to a restricted tool."""
+    user = db.query(User).filter(User.id == request.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if request.tool_id not in RESTRICTED_TOOLS:
+        raise HTTPException(status_code=400, detail="Invalid tool ID")
+    
+    # Check if already granted
+    existing = db.query(ToolPermission).filter(
+        ToolPermission.user_id == user.id,
+        ToolPermission.tool_id == request.tool_id
+    ).first()
+    
+    if existing:
+        return {"message": "Permission already exists"}
+    
+    # Grant permission
+    permission = ToolPermission(
+        user_id=user.id,
+        tool_id=request.tool_id,
+        granted_by=admin.id
+    )
+    db.add(permission)
+    db.commit()
+    
+    return {"message": f"Granted {request.tool_id} access to {user.email}"}
+
+@app.post("/api/admin/revoke-tool")
+async def revoke_tool_access(
+    request: GrantToolRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Revoke a user's access to a restricted tool."""
+    permission = db.query(ToolPermission).filter(
+        ToolPermission.user_id == request.user_id,
+        ToolPermission.tool_id == request.tool_id
+    ).first()
+    
+    if not permission:
+        raise HTTPException(status_code=404, detail="Permission not found")
+    
+    db.delete(permission)
+    db.commit()
+    
+    return {"message": f"Revoked {request.tool_id} access"}
+
+@app.post("/api/admin/set-role")
+async def set_user_role(
+    user_id: int,
+    role: str,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Set user role (admin only)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        user.role = UserRole(role)
+        db.commit()
+        return {"message": f"Set {user.email} role to {role}"}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid role")
+
 
 @app.post("/api/process-perfumes")
 async def process_perfumes(
