@@ -502,10 +502,11 @@ class PikoEmpiko:
             
             return result
 
-        # Process all rows with minimal workers to prevent OOM on Render (512MB limit)
-        logging.info(f"Processing {total_rows} rows with 2 workers...")
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            list(executor.map(process_row, list(df.iterrows())))
+        # Process rows SEQUENTIALLY to prevent OOM on Render (512MB limit)
+        # ThreadPoolExecutor was causing memory spikes
+        logging.info(f"Processing {total_rows} rows sequentially (OOM prevention)...")
+        for row_data in df.iterrows():
+            process_row(row_data)
         
         # Create result DataFrame
         df_result = pd.DataFrame(results)
