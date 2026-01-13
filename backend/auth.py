@@ -57,17 +57,23 @@ class GrantToolRequest(BaseModel):
     user_id: int
     tool_id: str
 
-# Password utilities
+# Password utilities - using SHA256 pre-hash to avoid bcrypt 72 byte limit
+import hashlib
+
+def _prehash_password(password: str) -> str:
+    """Pre-hash password with SHA256 to get exactly 64 hex chars (fits bcrypt 72 limit)."""
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt. Truncates to 72 bytes (bcrypt limit)."""
-    # Bcrypt only uses the first 72 bytes of a password
-    truncated = password[:72]
-    return pwd_context.hash(truncated)
+    """Hash a password using bcrypt with SHA256 pre-hash."""
+    # SHA256 produces 64 char hex string - always fits in bcrypt's 72 byte limit
+    prehashed = _prehash_password(password)
+    return pwd_context.hash(prehashed)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
-    truncated = plain_password[:72]
-    return pwd_context.verify(truncated, hashed_password)
+    prehashed = _prehash_password(plain_password)
+    return pwd_context.verify(prehashed, hashed_password)
 
 # JWT utilities
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
