@@ -92,7 +92,7 @@ async def health_check():
     return JSONResponse(status_code=200, content={
         "status": "ok",
         "service": "ToolBox Pro API",
-        "version": "2.2.0-sha256-prehash",  # SHA256 pre-hash fix
+        "version": "3.0.0-pbkdf2",  # PBKDF2 password hashing - no bcrypt
         "timestamp": datetime.now().isoformat(),
         "auth_available": AUTH_AVAILABLE
     })
