@@ -1,22 +1,21 @@
 """
 Authentication utilities for ToolBox Pro.
 JWT token management and password hashing.
+Uses PBKDF2-SHA256 instead of bcrypt to avoid dependencies issues.
 """
 import os
+import hashlib
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional, List
 from jose import JWTError, jwt
-from passlib.context import CryptContext
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 
 # Configuration
 SECRET_KEY = os.getenv("JWT_SECRET", "dev-secret-change-in-production-please!")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
-
-# Password hashing with bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Pydantic schemas
 class Token(BaseModel):
@@ -33,14 +32,6 @@ class UserCreate(BaseModel):
     email: str
     password: str
     display_name: Optional[str] = None
-    
-    @field_validator('password')
-    @classmethod
-    def password_max_length(cls, v):
-        """Ensure password doesn't exceed bcrypt's 72 byte limit."""
-        if len(v.encode('utf-8')) > 72:
-            raise ValueError('Password too long - maximum 72 characters')
-        return v
 
 class UserLogin(BaseModel):
     email: str
@@ -61,14 +52,23 @@ class GrantToolRequest(BaseModel):
     user_id: int
     tool_id: str
 
-# Password utilities
+# Password utilities using PBKDF2-SHA256 (no external dependencies)
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return pwd_context.hash(password)
+    """Hash a password using PBKDF2-SHA256."""
+    salt = secrets.token_bytes(16)
+    key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+    return f"{salt.hex()}:{key.hex()}"
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        salt_hex, key_hex = hashed_password.split(':')
+        salt = bytes.fromhex(salt_hex)
+        stored_key = bytes.fromhex(key_hex)
+        computed_key = hashlib.pbkdf2_hmac('sha256', plain_password.encode('utf-8'), salt, 100000)
+        return secrets.compare_digest(computed_key, stored_key)
+    except Exception:
+        return False
 
 # JWT utilities
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

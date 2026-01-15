@@ -92,7 +92,7 @@ async def health_check():
     return JSONResponse(status_code=200, content={
         "status": "ok",
         "service": "ToolBox Pro API",
-        "version": "3.1.0-pydantic-validation",
+        "version": "4.0.0-pbkdf2-only",
         "timestamp": datetime.now().isoformat(),
         "auth_available": AUTH_AVAILABLE
     })
