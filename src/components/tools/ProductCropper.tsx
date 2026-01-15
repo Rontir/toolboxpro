@@ -28,9 +28,10 @@ const PLATFORMS = [
 ];
 
 const BG_COLORS = [
+    { id: 'original', color: 'keep', label: 'Oryginalne' },
+    { id: 'transparent', color: 'transparent', label: 'Przezroczyste' },
     { id: 'white', color: '#ffffff', label: 'Białe' },
     { id: 'black', color: '#000000', label: 'Czarne' },
-    { id: 'transparent', color: 'transparent', label: 'Przezroczyste' },
     { id: 'custom', color: '', label: 'Własne' },
 ];
 
@@ -39,7 +40,7 @@ export default function ProductCropper() {
     const [platform, setPlatform] = useState('original');
     const [customWidth, setCustomWidth] = useState(1000);
     const [customHeight, setCustomHeight] = useState(1000);
-    const [bgOption, setBgOption] = useState('white');
+    const [bgOption, setBgOption] = useState('original');
     const [customBgColor, setCustomBgColor] = useState('#ffffff');
     const [processed, setProcessed] = useState<ProcessedImage[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -438,7 +439,8 @@ export default function ProductCropper() {
         const results: ProcessedImage[] = [];
         const platformData = getPlatformSize();
         const bgColor = getBackgroundColor();
-        const isTransparent = bgColor === 'transparent';
+        // 'keep' means preserve original transparency, 'transparent' means explicit transparent
+        const isTransparent = bgColor === 'transparent' || bgColor === 'keep';
 
         let autoCropFailures = 0;
 
