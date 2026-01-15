@@ -536,8 +536,15 @@ export default function ProductCropper() {
                     // Preserve original format
                     const originalExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
                     if (['jpg', 'jpeg'].includes(originalExt)) {
-                        finalFormat = 'image/jpeg';
-                        finalExt = 'jpg';
+                        // If transparent background is selected and original is JPG,
+                        // force PNG to preserve transparency
+                        if (isTransparent) {
+                            finalFormat = 'image/png';
+                            finalExt = 'png';
+                        } else {
+                            finalFormat = 'image/jpeg';
+                            finalExt = 'jpg';
+                        }
                     } else if (originalExt === 'png') {
                         finalFormat = 'image/png';
                         finalExt = 'png';
@@ -550,23 +557,29 @@ export default function ProductCropper() {
                         finalExt = isTransparent ? 'png' : 'jpg';
                     }
                 } else {
-                    // Use selected format
-                    switch (outputFormat) {
-                        case 'jpg':
-                            finalFormat = 'image/jpeg';
-                            finalExt = 'jpg';
-                            break;
-                        case 'png':
-                            finalFormat = 'image/png';
-                            finalExt = 'png';
-                            break;
-                        case 'webp':
-                            finalFormat = 'image/webp';
-                            finalExt = 'webp';
-                            break;
-                        default:
-                            finalFormat = 'image/jpeg';
-                            finalExt = 'jpg';
+                    // Use selected format, but override to PNG if transparent background
+                    // and selected format doesn't support transparency (jpg)
+                    if (isTransparent && outputFormat === 'jpg') {
+                        finalFormat = 'image/png';
+                        finalExt = 'png';
+                    } else {
+                        switch (outputFormat) {
+                            case 'jpg':
+                                finalFormat = 'image/jpeg';
+                                finalExt = 'jpg';
+                                break;
+                            case 'png':
+                                finalFormat = 'image/png';
+                                finalExt = 'png';
+                                break;
+                            case 'webp':
+                                finalFormat = 'image/webp';
+                                finalExt = 'webp';
+                                break;
+                            default:
+                                finalFormat = 'image/jpeg';
+                                finalExt = 'jpg';
+                        }
                     }
                 }
 

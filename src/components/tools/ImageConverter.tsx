@@ -296,6 +296,17 @@ export default function ImageConverter() {
                 const ctx = canvas.getContext('2d')!;
                 canvas.width = img.width;
                 canvas.height = img.height;
+
+                // Check if target format supports transparency
+                const supportsTransparency = fmt === 'png' || fmt === 'webp';
+
+                // For formats that don't support transparency (jpg, gif, bmp),
+                // fill with white background first to avoid black background
+                if (!supportsTransparency) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
+
                 ctx.drawImage(img, 0, 0);
 
                 const mimeType = fmt === 'jpg' ? 'image/jpeg' : `image/${fmt}`;
