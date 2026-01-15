@@ -18,7 +18,7 @@ from typing import List, Dict, Optional
 AUTH_AVAILABLE = False
 try:
     from database import get_db, init_db
-    from models import User, ToolPermission, UserRole, RESTRICTED_TOOLS
+    from models import User, ToolPermission, UserRole, RESTRICTED_TOOLS, Group
     from auth import (
         hash_password, verify_password, create_tokens, verify_token,
         UserCreate, UserLogin, UserResponse, Token, GrantToolRequest
@@ -92,7 +92,7 @@ async def health_check():
     return JSONResponse(status_code=200, content={
         "status": "ok",
         "service": "ToolBox Pro API",
-        "version": "4.0.0-pbkdf2-only",
+        "version": "4.1.0-groups",
         "timestamp": datetime.now().isoformat(),
         "auth_available": AUTH_AVAILABLE
     })
@@ -215,8 +215,8 @@ async def get_accessible_tools(user: Optional[User] = Depends(get_current_user))
         # Full access
         accessible = RESTRICTED_TOOLS
     else:
-        # Check explicit permissions
-        accessible = [p.tool_id for p in user.tool_permissions]
+        # Check group + individual permissions
+        accessible = user.get_all_accessible_tools()
     
     return {
         "accessible_tools": accessible,
@@ -236,7 +236,8 @@ async def list_users(admin: User = Depends(require_admin), db: Session = Depends
         "role": u.role.value,
         "is_active": u.is_active,
         "created_at": u.created_at.isoformat() if u.created_at else None,
-        "tool_permissions": [p.tool_id for p in u.tool_permissions]
+        "tool_permissions": [p.tool_id for p in u.tool_permissions],
+        "groups": [{"id": g.id, "name": g.name, "color": g.color} for g in u.groups]
     } for u in users]
 
 @app.post("/api/admin/grant-tool")
@@ -312,6 +313,160 @@ async def set_user_role(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid role")
 
+# ==================== GROUP ENDPOINTS ====================
+
+@app.get("/api/admin/groups")
+async def list_groups(admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """List all groups with their users and tools."""
+    groups = db.query(Group).all()
+    return [{
+        "id": g.id,
+        "name": g.name,
+        "color": g.color,
+        "description": g.description or "",
+        "tool_ids": g.get_tool_list(),
+        "user_ids": [u.id for u in g.users],
+        "user_count": len(g.users),
+        "created_at": g.created_at.isoformat() if g.created_at else None
+    } for g in groups]
+
+@app.post("/api/admin/groups")
+async def create_group(
+    name: str,
+    color: str = "#6366f1",
+    description: str = "",
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Create a new group."""
+    existing = db.query(Group).filter(Group.name == name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Group name already exists")
+    
+    group = Group(name=name, color=color, description=description)
+    db.add(group)
+    db.commit()
+    db.refresh(group)
+    
+    return {"id": group.id, "name": group.name, "message": "Group created"}
+
+@app.put("/api/admin/groups/{group_id}")
+async def update_group(
+    group_id: int,
+    name: str = None,
+    color: str = None,
+    description: str = None,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Update group details."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    if name:
+        group.name = name
+    if color:
+        group.color = color
+    if description is not None:
+        group.description = description
+    
+    db.commit()
+    return {"message": f"Group '{group.name}' updated"}
+
+@app.delete("/api/admin/groups/{group_id}")
+async def delete_group(
+    group_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Delete a group."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    db.delete(group)
+    db.commit()
+    return {"message": f"Group deleted"}
+
+@app.put("/api/admin/groups/{group_id}/tools")
+async def set_group_tools(
+    group_id: int,
+    tool_ids: list[str],
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Set which tools this group has access to."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    group.set_tool_list(tool_ids)
+    db.commit()
+    return {"message": f"Group '{group.name}' tools updated", "tools": tool_ids}
+
+@app.put("/api/admin/groups/{group_id}/users")
+async def set_group_users(
+    group_id: int,
+    user_ids: list[int],
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Set which users belong to this group."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Get users
+    users = db.query(User).filter(User.id.in_(user_ids)).all()
+    group.users = users
+    db.commit()
+    
+    return {"message": f"Group '{group.name}' users updated", "user_count": len(users)}
+
+@app.post("/api/admin/groups/{group_id}/add-user/{user_id}")
+async def add_user_to_group(
+    group_id: int,
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Add a single user to a group."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user not in group.users:
+        group.users.append(user)
+        db.commit()
+    
+    return {"message": f"User '{user.email}' added to group '{group.name}'"}
+
+@app.delete("/api/admin/groups/{group_id}/remove-user/{user_id}")
+async def remove_user_from_group(
+    group_id: int,
+    user_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Remove a user from a group."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user in group.users:
+        group.users.remove(user)
+        db.commit()
+    
+    return {"message": f"User '{user.email}' removed from group '{group.name}'"}
 
 @app.post("/api/process-perfumes")
 async def process_perfumes(

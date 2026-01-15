@@ -14,13 +14,55 @@ class UserRole(str, enum.Enum):
     PREMIUM = "premium"
     ADMIN = "admin"
 
-# Many-to-many relationship for user tool permissions
+# Many-to-many: users <-> groups
+user_groups = Table(
+    'user_groups',
+    Base.metadata,
+    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
+    Column('group_id', Integer, ForeignKey('groups.id'), primary_key=True)
+)
+
+# Many-to-many: groups <-> tools
+group_tools = Table(
+    'group_tools',
+    Base.metadata,
+    Column('group_id', Integer, ForeignKey('groups.id'), primary_key=True),
+    Column('tool_id', String, primary_key=True)
+)
+
+# Legacy: user tool permissions (kept for backward compatibility)
 user_tool_permissions = Table(
     'user_tool_permissions',
     Base.metadata,
     Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
-    Column('tool_id', String, primary_key=True)  # Tool identifier like 'piko_empiko'
+    Column('tool_id', String, primary_key=True)
 )
+
+class Group(Base):
+    """Group/Role model - like Discord roles."""
+    __tablename__ = "groups"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False)
+    color = Column(String, default="#6366f1")  # Hex color for badge
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Tools this group has access to
+    tool_ids = Column(String, default="")  # Comma-separated tool IDs
+    
+    # Users in this group
+    users = relationship("User", secondary=user_groups, back_populates="groups")
+    
+    def get_tool_list(self):
+        """Get list of tool IDs this group has access to."""
+        if not self.tool_ids:
+            return []
+        return [t.strip() for t in self.tool_ids.split(",") if t.strip()]
+    
+    def set_tool_list(self, tools: list):
+        """Set list of tool IDs for this group."""
+        self.tool_ids = ",".join(tools)
 
 class User(Base):
     """User model for authentication."""
@@ -35,7 +77,10 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Tools this user has explicit access to (beyond their role)
+    # Groups this user belongs to
+    groups = relationship("Group", secondary=user_groups, back_populates="users")
+    
+    # Tools this user has explicit access to (beyond their role/groups)
     tool_permissions = relationship(
         "ToolPermission",
         back_populates="user",
@@ -53,16 +98,32 @@ class User(Base):
         if self.role == UserRole.PREMIUM:
             return True
         
-        # Check explicit permissions
+        # Check group permissions
+        for group in self.groups:
+            if tool_id in group.get_tool_list():
+                return True
+        
+        # Check explicit individual permissions
         return any(perm.tool_id == tool_id for perm in self.tool_permissions)
+    
+    def get_all_accessible_tools(self):
+        """Get all tool IDs user has access to."""
+        tools = set()
+        # From groups
+        for group in self.groups:
+            tools.update(group.get_tool_list())
+        # From individual permissions
+        for perm in self.tool_permissions:
+            tools.add(perm.tool_id)
+        return list(tools)
 
 class ToolPermission(Base):
-    """Explicit tool permission for a user."""
+    """Explicit tool permission for a user (individual, not group-based)."""
     __tablename__ = "tool_permissions"
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    tool_id = Column(String, nullable=False)  # e.g., 'piko_empiko', 'structure_matcher'
+    tool_id = Column(String, nullable=False)
     granted_at = Column(DateTime(timezone=True), server_default=func.now())
     granted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     
@@ -73,3 +134,4 @@ RESTRICTED_TOOLS = [
     "piko_empiko",
     "structure_matcher"  # Dopasowywacz
 ]
+
