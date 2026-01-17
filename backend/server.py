@@ -92,7 +92,7 @@ async def health_check():
     return JSONResponse(status_code=200, content={
         "status": "ok",
         "service": "ToolBox Pro API",
-        "version": "4.2.0-profile-logs",
+        "version": "4.3.0-admin-complete",
         "timestamp": datetime.now().isoformat(),
         "auth_available": AUTH_AVAILABLE
     })
@@ -164,7 +164,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 @app.post("/api/auth/login", response_model=Token)
-async def login(credentials: UserLogin, db: Session = Depends(get_db)):
+async def login(credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
     """Login and get tokens."""
     user = db.query(User).filter(User.email == credentials.email).first()
     if not user or not verify_password(credentials.password, user.password_hash):
@@ -172,6 +172,20 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
     
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")
+    
+    # Log login activity
+    try:
+        log = ActivityLog(
+            user_id=user.id,
+            action="login",
+            details=f"Login successful for {user.email}",
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent", "")[:500]
+        )
+        db.add(log)
+        db.commit()
+    except Exception as e:
+        print(f"Failed to log login: {e}")
     
     return create_tokens(user.id, user.email, user.role.value)
 
