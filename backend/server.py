@@ -18,7 +18,7 @@ from typing import List, Dict, Optional
 AUTH_AVAILABLE = False
 try:
     from database import get_db, init_db
-    from models import User, ToolPermission, UserRole, RESTRICTED_TOOLS, Group
+    from models import User, ToolPermission, UserRole, RESTRICTED_TOOLS, Group, ActivityLog
     from auth import (
         hash_password, verify_password, create_tokens, verify_token,
         UserCreate, UserLogin, UserResponse, Token, GrantToolRequest
@@ -92,7 +92,7 @@ async def health_check():
     return JSONResponse(status_code=200, content={
         "status": "ok",
         "service": "ToolBox Pro API",
-        "version": "4.1.0-groups",
+        "version": "4.2.0-profile-logs",
         "timestamp": datetime.now().isoformat(),
         "auth_available": AUTH_AVAILABLE
     })
@@ -221,6 +221,75 @@ async def get_accessible_tools(user: Optional[User] = Depends(get_current_user))
     return {
         "accessible_tools": accessible,
         "all_restricted": RESTRICTED_TOOLS
+    }
+
+# ==================== PROFILE ENDPOINTS ====================
+
+# Helper function to log activity
+def log_activity(db: Session, user_id: int, action: str, details: str = None, request: Request = None):
+    """Log user activity to database."""
+    try:
+        log = ActivityLog(
+            user_id=user_id,
+            action=action,
+            details=details,
+            ip_address=request.client.host if request else None,
+            user_agent=request.headers.get("user-agent", "")[:500] if request else None
+        )
+        db.add(log)
+        db.commit()
+    except Exception as e:
+        print(f"Failed to log activity: {e}")
+
+@app.post("/api/auth/change-password")
+async def change_password(
+    current_password: str,
+    new_password: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Change user's password."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    if not verify_password(current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    
+    user.password_hash = hash_password(new_password)
+    db.commit()
+    
+    log_activity(db, user.id, "password_change", "User changed own password", request)
+    
+    return {"message": "Password changed successfully"}
+
+@app.put("/api/auth/profile")
+async def update_profile(
+    display_name: str = None,
+    request: Request = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update user profile."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    if display_name is not None:
+        user.display_name = display_name.strip() or None
+    
+    db.commit()
+    db.refresh(user)
+    
+    log_activity(db, user.id, "profile_update", f"Updated display_name to {display_name}", request)
+    
+    return {
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name,
+        "role": user.role.value
     }
 
 # ==================== ADMIN ENDPOINTS ====================
@@ -467,6 +536,113 @@ async def remove_user_from_group(
         db.commit()
     
     return {"message": f"User '{user.email}' removed from group '{group.name}'"}
+
+# ==================== ADMIN EXTENDED ENDPOINTS ====================
+
+@app.post("/api/admin/reset-password/{user_id}")
+async def admin_reset_password(
+    user_id: int,
+    new_password: str,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Admin resets a user's password."""
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    
+    target_user.password_hash = hash_password(new_password)
+    db.commit()
+    
+    log_activity(db, admin.id, "admin_password_reset", f"Reset password for user {target_user.email}", request)
+    
+    return {"message": f"Password reset for {target_user.email}"}
+
+@app.get("/api/admin/activity-logs")
+async def get_activity_logs(
+    limit: int = 100,
+    user_id: int = None,
+    action: str = None,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get activity logs (admin only)."""
+    query = db.query(ActivityLog).order_by(ActivityLog.created_at.desc())
+    
+    if user_id:
+        query = query.filter(ActivityLog.user_id == user_id)
+    if action:
+        query = query.filter(ActivityLog.action == action)
+    
+    logs = query.limit(limit).all()
+    
+    return [{
+        "id": log.id,
+        "user_id": log.user_id,
+        "user_email": log.user.email if log.user else None,
+        "action": log.action,
+        "details": log.details,
+        "ip_address": log.ip_address,
+        "created_at": log.created_at.isoformat() if log.created_at else None
+    } for log in logs]
+
+@app.get("/api/admin/dashboard-stats")
+async def get_dashboard_stats(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get dashboard statistics for admin panel."""
+    from sqlalchemy import func as sqlfunc
+    
+    total_users = db.query(User).count()
+    active_users = db.query(User).filter(User.is_active == True).count()
+    total_groups = db.query(Group).count()
+    
+    # Activity stats (last 24h, 7d, 30d)
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    
+    logins_24h = db.query(ActivityLog).filter(
+        ActivityLog.action == "login",
+        ActivityLog.created_at >= now - timedelta(hours=24)
+    ).count()
+    
+    logins_7d = db.query(ActivityLog).filter(
+        ActivityLog.action == "login",
+        ActivityLog.created_at >= now - timedelta(days=7)
+    ).count()
+    
+    # Most active users
+    top_users = db.query(
+        ActivityLog.user_id,
+        sqlfunc.count(ActivityLog.id).label('count')
+    ).filter(
+        ActivityLog.user_id.isnot(None)
+    ).group_by(ActivityLog.user_id).order_by(sqlfunc.count(ActivityLog.id).desc()).limit(5).all()
+    
+    top_users_data = []
+    for user_id, count in top_users:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            top_users_data.append({
+                "user_id": user_id,
+                "email": user.email,
+                "display_name": user.display_name,
+                "activity_count": count
+            })
+    
+    return {
+        "total_users": total_users,
+        "active_users": active_users,
+        "total_groups": total_groups,
+        "logins_24h": logins_24h,
+        "logins_7d": logins_7d,
+        "top_users": top_users_data
+    }
 
 @app.post("/api/process-perfumes")
 async def process_perfumes(

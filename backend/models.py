@@ -135,3 +135,16 @@ RESTRICTED_TOOLS = [
     "structure_matcher"  # Dopasowywacz
 ]
 
+class ActivityLog(Base):
+    """Activity log for tracking user actions."""
+    __tablename__ = "activity_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Null for anonymous
+    action = Column(String, nullable=False)  # login, logout, tool_use, password_change, etc.
+    details = Column(String, nullable=True)  # JSON or text with additional info
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    user = relationship("User", backref="activity_logs", foreign_keys=[user_id])

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import LoginModal from './LoginModal';
 import RegisterModal from './RegisterModal';
+import ProfileModal from './ProfileModal';
 
 interface UserMenuProps {
     onOpenAdmin?: () => void;
@@ -14,6 +15,7 @@ export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [showRegisterModal, setShowRegisterModal] = useState(false);
+    const [showProfileModal, setShowProfileModal] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown on outside click
@@ -126,6 +128,26 @@ export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
 
                         {/* Menu Items */}
                         <div style={{ padding: '0.5rem 0' }}>
+                            <button
+                                onClick={() => { setIsDropdownOpen(false); setShowProfileModal(true); }}
+                                style={{
+                                    width: '100%',
+                                    padding: '0.75rem 1rem',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--text-white)',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    fontSize: '0.875rem'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                            >
+                                👤 Mój Profil
+                            </button>
                             {user?.role === 'admin' && onOpenAdmin && (
                                 <button
                                     onClick={() => { setIsDropdownOpen(false); onOpenAdmin(); }}
@@ -183,6 +205,10 @@ export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
                 isOpen={showRegisterModal}
                 onClose={() => setShowRegisterModal(false)}
                 onSwitchToLogin={() => { setShowRegisterModal(false); setShowLoginModal(true); }}
+            />
+            <ProfileModal
+                isOpen={showProfileModal}
+                onClose={() => setShowProfileModal(false)}
             />
 
             <style>{`
