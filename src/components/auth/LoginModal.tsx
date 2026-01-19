@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/components/Toast';
 
 interface LoginModalProps {
     isOpen: boolean;
@@ -15,6 +16,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
+    const { showToast } = useToast();
 
     if (!isOpen) return null;
 
@@ -25,6 +27,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
 
         try {
             await login(email, password);
+            showToast('Zalogowano pomyślnie!', 'success', '🔑');
             onClose();
             setEmail('');
             setPassword('');
@@ -33,6 +36,10 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleForgotPassword = () => {
+        alert('W celu zresetowania hasła skontaktuj się z administratorem systemu.');
     };
 
     return (
@@ -116,7 +123,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
                             />
                         </div>
 
-                        <div style={{ marginBottom: '1.5rem' }}>
+                        <div style={{ marginBottom: '0.5rem' }}>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                                 Hasło
                             </label>
@@ -136,6 +143,23 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
                                     fontSize: '1rem'
                                 }}
                             />
+                        </div>
+
+                        <div style={{ textAlign: 'right', marginBottom: '1.5rem' }}>
+                            <button
+                                type="button"
+                                onClick={handleForgotPassword}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--text-muted)',
+                                    fontSize: '0.75rem',
+                                    cursor: 'pointer',
+                                    textDecoration: 'underline'
+                                }}
+                            >
+                                Zapomniałeś hasła?
+                            </button>
                         </div>
 
                         <button

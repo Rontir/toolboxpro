@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/components/Toast';
 import LoginModal from './LoginModal';
 import RegisterModal from './RegisterModal';
 import ProfileModal from './ProfileModal';
@@ -12,6 +13,7 @@ interface UserMenuProps {
 
 export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
     const { user, isAuthenticated, logout, isLoading } = useAuth();
+    const { showToast } = useToast();
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -31,6 +33,7 @@ export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
 
     const handleLogout = () => {
         logout();
+        showToast('Wylogowano pomyślnie', 'info', '🚪');
         setIsDropdownOpen(false);
     };
 

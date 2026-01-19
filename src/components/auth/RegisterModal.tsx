@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/components/Toast';
 
 interface RegisterModalProps {
     isOpen: boolean;
@@ -17,6 +18,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const { register } = useAuth();
+    const { showToast } = useToast();
 
     if (!isOpen) return null;
 
@@ -38,6 +40,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
 
         try {
             await register(email, password, displayName || undefined);
+            showToast('Konto utworzone pomyślnie!', 'success', '✨');
             onClose();
             setEmail('');
             setPassword('');
