@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/Toast';
+import { useI18n } from '@/components/I18n';
 
 interface LoginModalProps {
     isOpen: boolean;
@@ -17,6 +18,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
     const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
     const { showToast } = useToast();
+    const { t } = useI18n();
 
     if (!isOpen) return null;
 
@@ -27,19 +29,19 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
 
         try {
             await login(email, password);
-            showToast('Zalogowano pomyślnie!', 'success', '🔑');
+            showToast(t('auth.loginSuccess'), 'success', '🔑');
             onClose();
             setEmail('');
             setPassword('');
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Błąd logowania');
+            setError(err instanceof Error ? err.message : t('auth.errorLogin'));
         } finally {
             setIsLoading(false);
         }
     };
 
     const handleForgotPassword = () => {
-        alert('W celu zresetowania hasła skontaktuj się z administratorem systemu.');
+        alert(t('auth.forgotPasswordAlert'));
     };
 
     return (
@@ -70,7 +72,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
                 onClick={e => e.stopPropagation()}
             >
                 <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>🔐 Logowanie</span>
+                    <span>🔐 {t('auth.login')}</span>
                     <button
                         onClick={onClose}
                         style={{
@@ -103,7 +105,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
 
                         <div style={{ marginBottom: '1rem' }}>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                                Email
+                                {t('auth.email')}
                             </label>
                             <input
                                 type="email"
@@ -125,7 +127,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
 
                         <div style={{ marginBottom: '0.5rem' }}>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                                Hasło
+                                {t('auth.password')}
                             </label>
                             <input
                                 type="password"
@@ -158,7 +160,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
                                     textDecoration: 'underline'
                                 }}
                             >
-                                Zapomniałeś hasła?
+                                {t('auth.forgotPassword')}
                             </button>
                         </div>
 
@@ -168,12 +170,12 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
                             className="btn btn-primary"
                             style={{ width: '100%', padding: '0.875rem', fontSize: '1rem' }}
                         >
-                            {isLoading ? '⏳ Logowanie...' : '🚀 Zaloguj się'}
+                            {isLoading ? `⏳ ${t('auth.loggingIn')}` : `🚀 ${t('auth.login')}`}
                         </button>
                     </form>
 
                     <div style={{ marginTop: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                        Nie masz konta?{' '}
+                        {t('auth.noAccount')}{' '}
                         <button
                             onClick={onSwitchToRegister}
                             style={{
@@ -184,7 +186,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToRegister }: Logi
                                 textDecoration: 'underline'
                             }}
                         >
-                            Zarejestruj się
+                            {t('auth.register')}
                         </button>
                     </div>
                 </div>

@@ -29,6 +29,7 @@ export function useToast() {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [showOverlay, setShowOverlay] = useState(false);
+    const [overlayMessage, setOverlayMessage] = useState('');
 
     const showToast = useCallback((message: string, type: Toast['type'] = 'info', icon?: string) => {
         const id = Date.now().toString();
@@ -47,6 +48,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
         // Show blur overlay for success
         if (type === 'success') {
+            setOverlayMessage(message);
             setShowOverlay(true);
             triggerConfetti();
             setTimeout(() => setShowOverlay(false), 2000);
@@ -82,7 +84,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                     justifyContent: 'center',
                 }}
             >
-                {showOverlay && (
+                {showOverlay && overlayMessage && (
                     <div
                         style={{
                             display: 'flex',
@@ -97,9 +99,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                             fontSize: '1.5rem',
                             fontWeight: 700,
                             color: 'var(--accent)',
-                            textShadow: '0 0 20px var(--accent-glow)'
+                            textShadow: '0 0 20px var(--accent-glow)',
+                            textAlign: 'center',
+                            padding: '0 1rem'
                         }}>
-                            Plik gotowy!
+                            {overlayMessage}
                         </div>
                     </div>
                 )}

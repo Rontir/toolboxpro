@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/Toast';
+import { useI18n } from '@/components/I18n';
 
 interface RegisterModalProps {
     isOpen: boolean;
@@ -19,6 +20,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
     const [isLoading, setIsLoading] = useState(false);
     const { register } = useAuth();
     const { showToast } = useToast();
+    const { t } = useI18n();
 
     if (!isOpen) return null;
 
@@ -27,12 +29,12 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
         setError('');
 
         if (password !== confirmPassword) {
-            setError('Hasła nie są identyczne');
+            setError(t('auth.passwordsNotMatch'));
             return;
         }
 
         if (password.length < 8) {
-            setError('Hasło musi mieć minimum 8 znaków');
+            setError(t('auth.passwordMinLength'));
             return;
         }
 
@@ -40,14 +42,14 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
 
         try {
             await register(email, password, displayName || undefined);
-            showToast('Konto utworzone pomyślnie!', 'success', '✨');
+            showToast(t('auth.registerSuccess'), 'success', '✨');
             onClose();
             setEmail('');
             setPassword('');
             setConfirmPassword('');
             setDisplayName('');
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Błąd rejestracji');
+            setError(err instanceof Error ? err.message : t('auth.errorRegister'));
         } finally {
             setIsLoading(false);
         }
@@ -81,7 +83,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
                 onClick={e => e.stopPropagation()}
             >
                 <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>📝 Rejestracja</span>
+                    <span>📝 {t('auth.register')}</span>
                     <button
                         onClick={onClose}
                         style={{
@@ -114,7 +116,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
 
                         <div style={{ marginBottom: '1rem' }}>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                                Nazwa użytkownika <span style={{ color: 'var(--text-muted)' }}>(opcjonalne)</span>
+                                {t('profile.displayName')} <span style={{ color: 'var(--text-muted)' }}>{t('profile.optional')}</span>
                             </label>
                             <input
                                 type="text"
@@ -135,7 +137,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
 
                         <div style={{ marginBottom: '1rem' }}>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                                Email
+                                {t('auth.email')}
                             </label>
                             <input
                                 type="email"
@@ -157,7 +159,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
 
                         <div style={{ marginBottom: '1rem' }}>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                                Hasło <span style={{ color: 'var(--text-muted)' }}>(min. 8 znaków)</span>
+                                {t('auth.password')} <span style={{ color: 'var(--text-muted)' }}>(min. 8)</span>
                             </label>
                             <input
                                 type="password"
@@ -180,7 +182,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
 
                         <div style={{ marginBottom: '1.5rem' }}>
                             <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                                Powtórz hasło
+                                {t('auth.confirmPassword')}
                             </label>
                             <input
                                 type="password"
@@ -206,12 +208,12 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
                             className="btn btn-primary"
                             style={{ width: '100%', padding: '0.875rem', fontSize: '1rem' }}
                         >
-                            {isLoading ? '⏳ Rejestracja...' : '✨ Zarejestruj się'}
+                            {isLoading ? `⏳ ${t('auth.registering')}` : `✨ ${t('auth.register')}`}
                         </button>
                     </form>
 
                     <div style={{ marginTop: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                        Masz już konto?{' '}
+                        {t('auth.hasAccount')}{' '}
                         <button
                             onClick={onSwitchToLogin}
                             style={{
@@ -222,7 +224,7 @@ export default function RegisterModal({ isOpen, onClose, onSwitchToLogin }: Regi
                                 textDecoration: 'underline'
                             }}
                         >
-                            Zaloguj się
+                            {t('auth.login')}
                         </button>
                     </div>
                 </div>

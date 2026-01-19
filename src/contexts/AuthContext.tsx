@@ -8,7 +8,7 @@ interface User {
     id: number;
     email: string;
     display_name: string | null;
-    role: 'guest' | 'user' | 'premium' | 'admin';
+    role: 'guest' | 'user' | 'premium' | 'admin' | 'owner';
     is_active: boolean;
     tool_permissions: string[];
 }
@@ -175,8 +175,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return false;
         }
 
-        // Admin and premium have access to everything
-        if (user.role === 'admin' || user.role === 'premium') {
+        // Admin, Owner and premium have access to everything
+        if (user.role === 'admin' || user.role === 'owner' || user.role === 'premium') {
             return true;
         }
 

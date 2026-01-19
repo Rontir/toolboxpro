@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/config';
+import { useI18n } from '@/components/I18n';
 
 interface ProfileModalProps {
     isOpen: boolean;
@@ -11,6 +12,7 @@ interface ProfileModalProps {
 
 export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     const { user, refreshUser } = useAuth();
+    const { t } = useI18n();
     const [activeTab, setActiveTab] = useState<'profile' | 'password'>('profile');
     const [displayName, setDisplayName] = useState(user?.display_name || '');
     const [currentPassword, setCurrentPassword] = useState('');
@@ -34,7 +36,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
             });
 
             if (res.ok) {
-                setSuccess('Profil zaktualizowany!');
+                setSuccess(t('profile.updateSuccess'));
                 refreshUser?.();
             } else {
                 const data = await res.json();
@@ -49,11 +51,11 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
 
     const changePassword = async () => {
         if (newPassword !== confirmPassword) {
-            setError('Hasła nie są identyczne');
+            setError(t('auth.passwordsNotMatch'));
             return;
         }
         if (newPassword.length < 8) {
-            setError('Nowe hasło musi mieć minimum 8 znaków');
+            setError(t('auth.passwordMinLength'));
             return;
         }
 
@@ -68,7 +70,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
             });
 
             if (res.ok) {
-                setSuccess('Hasło zmienione!');
+                setSuccess(t('profile.passwordSuccess'));
                 setCurrentPassword('');
                 setNewPassword('');
                 setConfirmPassword('');
@@ -106,6 +108,14 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         fontSize: '0.9rem'
     };
 
+    const getRoleLabel = (role: string) => {
+        switch (role) {
+            case 'admin': return `👑 ${t('role.admin')}`;
+            case 'premium': return `⭐ ${t('role.premium')}`;
+            default: return `👤 ${t('role.user')}`;
+        }
+    };
+
     return (
         <div
             style={{
@@ -126,17 +136,17 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
             >
                 {/* Header */}
                 <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>👤 Mój Profil</h2>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>👤 {t('profile.title')}</h2>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
                 </div>
 
                 {/* Tabs */}
                 <div style={{ display: 'flex', gap: '0.25rem', padding: '0 1.5rem', borderBottom: '1px solid var(--border)' }}>
                     <button style={tabStyle(activeTab === 'profile')} onClick={() => setActiveTab('profile')}>
-                        ✏️ Dane
+                        ✏️ {t('profile.tab.data')}
                     </button>
                     <button style={tabStyle(activeTab === 'password')} onClick={() => setActiveTab('password')}>
-                        🔐 Hasło
+                        🔐 {t('profile.tab.password')}
                     </button>
                 </div>
 
@@ -149,43 +159,43 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                     {activeTab === 'profile' ? (
                         <div>
                             <div style={{ marginBottom: '1rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Email</label>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('auth.email')}</label>
                                 <input value={user.email} disabled style={{ ...inputStyle, opacity: 0.6, cursor: 'not-allowed' }} />
                             </div>
                             <div style={{ marginBottom: '1rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Rola</label>
-                                <input value={user.role === 'admin' ? '👑 Administrator' : user.role === 'premium' ? '⭐ Premium' : '👤 Użytkownik'} disabled style={{ ...inputStyle, opacity: 0.6, cursor: 'not-allowed' }} />
+                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('profile.role')}</label>
+                                <input value={getRoleLabel(user.role)} disabled style={{ ...inputStyle, opacity: 0.6, cursor: 'not-allowed' }} />
                             </div>
                             <div style={{ marginBottom: '1.5rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Nazwa wyświetlana</label>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('profile.displayName')}</label>
                                 <input value={displayName} onChange={e => setDisplayName(e.target.value)} style={inputStyle} placeholder="Twoja nazwa..." />
                             </div>
                             <button onClick={updateProfile} disabled={isLoading} style={{
                                 width: '100%', padding: '0.875rem', background: 'var(--accent)', color: 'black',
                                 border: 'none', borderRadius: '8px', cursor: isLoading ? 'wait' : 'pointer', fontWeight: 600
                             }}>
-                                {isLoading ? 'Zapisywanie...' : '💾 Zapisz zmiany'}
+                                {isLoading ? t('profile.saving') : `💾 ${t('common.save')}`}
                             </button>
                         </div>
                     ) : (
                         <div>
                             <div style={{ marginBottom: '1rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Aktualne hasło</label>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('profile.currentPassword')}</label>
                                 <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} style={inputStyle} placeholder="••••••••" />
                             </div>
                             <div style={{ marginBottom: '1rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Nowe hasło</label>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('profile.newPassword')}</label>
                                 <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle} placeholder="Min. 8 znaków" />
                             </div>
                             <div style={{ marginBottom: '1.5rem' }}>
-                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Powtórz nowe hasło</label>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('profile.confirmPassword')}</label>
                                 <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} style={inputStyle} placeholder="••••••••" />
                             </div>
                             <button onClick={changePassword} disabled={isLoading} style={{
                                 width: '100%', padding: '0.875rem', background: 'var(--accent)', color: 'black',
                                 border: 'none', borderRadius: '8px', cursor: isLoading ? 'wait' : 'pointer', fontWeight: 600
                             }}>
-                                {isLoading ? 'Zmienianie...' : '🔐 Zmień hasło'}
+                                {isLoading ? t('profile.saving') : `🔐 ${t('profile.passwordSuccess')}`}
                             </button>
                         </div>
                     )}

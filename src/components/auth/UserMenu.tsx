@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/Toast';
+import { useI18n } from '@/components/I18n';
 import LoginModal from './LoginModal';
 import RegisterModal from './RegisterModal';
 import ProfileModal from './ProfileModal';
@@ -14,6 +15,7 @@ interface UserMenuProps {
 export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
     const { user, isAuthenticated, logout, isLoading } = useAuth();
     const { showToast } = useToast();
+    const { t } = useI18n();
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -33,12 +35,13 @@ export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
 
     const handleLogout = () => {
         logout();
-        showToast('Wylogowano pomyślnie', 'info', '🚪');
+        showToast(t('auth.logoutSuccess'), 'info', '🚪');
         setIsDropdownOpen(false);
     };
 
     const getRoleColor = (role: string) => {
         switch (role) {
+            case 'owner': return 'linear-gradient(135deg, #FFD700, #FFA500)'; // Gold/Orange for Owner
             case 'admin': return '#ef4444';
             case 'premium': return '#f59e0b';
             default: return 'var(--accent)';
@@ -47,9 +50,10 @@ export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
 
     const getRoleBadge = (role: string) => {
         switch (role) {
-            case 'admin': return '👑 Admin';
-            case 'premium': return '⭐ Premium';
-            default: return '👤 User';
+            case 'owner': return `👑 ${t('role.owner')}`;
+            case 'admin': return `🛡️ ${t('role.admin')}`;
+            case 'premium': return `⭐ ${t('role.premium')}`;
+            default: return `👤 ${t('role.user')}`;
         }
     };
 
@@ -84,7 +88,7 @@ export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
                         transition: 'all 0.2s',
                         fontSize: '1.25rem'
                     }}
-                    title={isAuthenticated ? user?.display_name || user?.email : 'Zaloguj się'}
+                    title={isAuthenticated ? user?.display_name || user?.email : t('auth.login')}
                 >
                     {isAuthenticated ? (
                         user?.display_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '👤'
@@ -149,9 +153,9 @@ export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
                                 onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'none'}
                             >
-                                👤 Mój Profil
+                                👤 {t('auth.myProfile')}
                             </button>
-                            {user?.role === 'admin' && onOpenAdmin && (
+                            {(user?.role === 'admin' || user?.role === 'owner') && onOpenAdmin && (
                                 <button
                                     onClick={() => { setIsDropdownOpen(false); onOpenAdmin(); }}
                                     style={{
@@ -170,7 +174,7 @@ export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
                                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
                                     onMouseLeave={e => e.currentTarget.style.background = 'none'}
                                 >
-                                    ⚙️ Panel Admina
+                                    ⚙️ {t('auth.adminPanel')}
                                 </button>
                             )}
                             <button
@@ -191,7 +195,7 @@ export default function UserMenu({ onOpenAdmin }: UserMenuProps) {
                                 onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'none'}
                             >
-                                🚪 Wyloguj
+                                🚪 {t('auth.logout')}
                             </button>
                         </div>
                     </div>

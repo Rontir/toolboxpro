@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/config';
+import { useI18n } from '@/components/I18n';
 
 interface GroupInfo { id: number; name: string; color: string; }
 interface User {
@@ -30,6 +31,7 @@ interface AdminPanelProps { isOpen: boolean; onClose: () => void; }
 
 export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
     const { user } = useAuth();
+    const { t } = useI18n();
     const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'groups' | 'logs'>('dashboard');
     const [users, setUsers] = useState<User[]>([]);
     const [groups, setGroups] = useState<Group[]>([]);
@@ -57,7 +59,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
     const showSuccess = (msg: string) => { setSuccessMessage(msg); setTimeout(() => setSuccessMessage(''), 3000); };
 
     const fetchAll = async () => {
-        if (!user || user.role !== 'admin') return;
+        if (!user || (user.role !== 'admin' && user.role !== 'owner')) return;
         setIsLoading(true);
         try {
             const [usersRes, groupsRes, logsRes, statsRes] = await Promise.all([
@@ -70,7 +72,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
             if (groupsRes.ok) setGroups(await groupsRes.json());
             if (logsRes.ok) setLogs(await logsRes.json());
             if (statsRes.ok) setStats(await statsRes.json());
-        } catch { setError('Błąd połączenia'); }
+        } catch { setError(t('common.error')); }
         finally { setIsLoading(false); }
     };
 
@@ -81,7 +83,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
         await fetch(apiUrl(`/api/admin/set-role?user_id=${userId}&role=${role}`), {
             method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }
         });
-        showSuccess(`Zmieniono rolę na ${role}`);
+        showSuccess(`${t('common.success')}: ${role}`);
         fetchAll();
     };
 
@@ -89,7 +91,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
         await fetch(apiUrl(`/api/admin/groups/${groupId}/add-user/${userId}`), {
             method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }
         });
-        showSuccess('Dodano do grupy');
+        showSuccess(t('common.success'));
         fetchAll();
     };
 
@@ -97,19 +99,19 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
         await fetch(apiUrl(`/api/admin/groups/${groupId}/remove-user/${userId}`), {
             method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` }
         });
-        showSuccess('Usunięto z grupy');
+        showSuccess(t('common.success'));
         fetchAll();
     };
 
     const resetPassword = async () => {
         if (!resetUserId || newPassword.length < 8) {
-            setError('Hasło musi mieć min. 8 znaków');
+            setError(t('auth.passwordMinLength'));
             return;
         }
         await fetch(apiUrl(`/api/admin/reset-password/${resetUserId}?new_password=${encodeURIComponent(newPassword)}`), {
             method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }
         });
-        showSuccess(`Zresetowano hasło dla ${resetUserEmail}`);
+        showSuccess(t('admin.resetPasswordSuccess'));
         setShowResetModal(false);
         setNewPassword('');
     };
@@ -133,7 +135,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
     };
 
     const saveGroup = async () => {
-        if (!groupName.trim()) { setError('Nazwa grupy jest wymagana'); return; }
+        if (!groupName.trim()) { setError(t('common.error')); return; }
         if (editingGroup) {
             await fetch(apiUrl(`/api/admin/groups/${editingGroup.id}?name=${encodeURIComponent(groupName)}&color=${encodeURIComponent(groupColor)}&description=${encodeURIComponent(groupDescription)}`), {
                 method: 'PUT', headers: { 'Authorization': `Bearer ${getToken()}` }
@@ -142,7 +144,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                 method: 'PUT', headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(groupTools)
             });
-            showSuccess('Zaktualizowano grupę');
+            showSuccess(t('common.success'));
         } else {
             const res = await fetch(apiUrl(`/api/admin/groups?name=${encodeURIComponent(groupName)}&color=${encodeURIComponent(groupColor)}&description=${encodeURIComponent(groupDescription)}`), {
                 method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }
@@ -154,16 +156,16 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                     body: JSON.stringify(groupTools)
                 });
             }
-            showSuccess('Utworzono grupę');
+            showSuccess(t('common.success'));
         }
         setShowGroupModal(false);
         fetchAll();
     };
 
     const deleteGroup = async (groupId: number) => {
-        if (!confirm('Czy na pewno usunąć tę grupę?')) return;
+        if (!confirm(t('admin.confirmDeleteGroup'))) return;
         await fetch(apiUrl(`/api/admin/groups/${groupId}`), { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } });
-        showSuccess('Usunięto grupę');
+        showSuccess(t('common.success'));
         fetchAll();
     };
 
@@ -183,16 +185,16 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
             <div style={{ width: '100%', maxWidth: '1100px', maxHeight: '90vh', background: 'var(--bg-primary)', borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>⚙️ Panel Administratora</h2>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>⚙️ {t('admin.title')}</h2>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
                 </div>
 
                 {/* Tabs */}
                 <div style={{ display: 'flex', gap: '0.25rem', padding: '0 1.5rem', borderBottom: '1px solid var(--border)' }}>
-                    <button style={tabStyle(activeTab === 'dashboard')} onClick={() => setActiveTab('dashboard')}>📊 Dashboard</button>
-                    <button style={tabStyle(activeTab === 'users')} onClick={() => setActiveTab('users')}>👥 Użytkownicy ({users.length})</button>
-                    <button style={tabStyle(activeTab === 'groups')} onClick={() => setActiveTab('groups')}>🏷️ Grupy ({groups.length})</button>
-                    <button style={tabStyle(activeTab === 'logs')} onClick={() => setActiveTab('logs')}>📋 Logi ({logs.length})</button>
+                    <button style={tabStyle(activeTab === 'dashboard')} onClick={() => setActiveTab('dashboard')}>📊 {t('admin.tab.dashboard')}</button>
+                    <button style={tabStyle(activeTab === 'users')} onClick={() => setActiveTab('users')}>👥 {t('admin.tab.users')} ({users.length})</button>
+                    <button style={tabStyle(activeTab === 'groups')} onClick={() => setActiveTab('groups')}>🏷️ {t('admin.tab.groups')} ({groups.length})</button>
+                    <button style={tabStyle(activeTab === 'logs')} onClick={() => setActiveTab('logs')}>📋 {t('admin.tab.logs')} ({logs.length})</button>
                 </div>
 
                 {/* Messages */}
@@ -201,29 +203,29 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
 
                 {/* Content */}
                 <div style={{ flex: 1, overflow: 'auto', padding: '1.5rem' }}>
-                    {isLoading ? <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Ładowanie...</div> :
+                    {isLoading ? <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>{t('common.loading')}</div> :
                         activeTab === 'dashboard' ? (
                             /* Dashboard */
                             <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
                                 <div style={cardStyle}>
                                     <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--accent)' }}>{stats?.total_users || 0}</div>
-                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Użytkowników</div>
+                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('admin.users')}</div>
                                 </div>
                                 <div style={cardStyle}>
                                     <div style={{ fontSize: '2rem', fontWeight: 700, color: '#3b82f6' }}>{stats?.total_groups || 0}</div>
-                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Grup</div>
+                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('admin.groups')}</div>
                                 </div>
                                 <div style={cardStyle}>
                                     <div style={{ fontSize: '2rem', fontWeight: 700, color: '#f59e0b' }}>{stats?.logins_24h || 0}</div>
-                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Logowań (24h)</div>
+                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('admin.logins24h')}</div>
                                 </div>
                                 <div style={cardStyle}>
                                     <div style={{ fontSize: '2rem', fontWeight: 700, color: '#8b5cf6' }}>{stats?.logins_7d || 0}</div>
-                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Logowań (7 dni)</div>
+                                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('admin.logins7d')}</div>
                                 </div>
                                 {stats?.top_users && stats.top_users.length > 0 && (
                                     <div style={{ ...cardStyle, gridColumn: 'span 2' }}>
-                                        <div style={{ fontWeight: 600, marginBottom: '1rem' }}>🏆 Najaktywniejsi użytkownicy</div>
+                                        <div style={{ fontWeight: 600, marginBottom: '1rem' }}>🏆 {t('admin.activeUsers')}</div>
                                         {stats.top_users.map((u, i) => (
                                             <div key={u.user_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: i < stats.top_users.length - 1 ? '1px solid var(--border)' : 'none' }}>
                                                 <span>{u.display_name || u.email}</span>
@@ -238,9 +240,9 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                                        <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>Użytkownik</th>
-                                        <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>Rola</th>
-                                        <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>Grupy</th>
+                                        <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>{t('role.user')}</th>
+                                        <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>{t('profile.role')}</th>
+                                        <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>{t('admin.groups')}</th>
                                         <th style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 500 }}>Akcje</th>
                                     </tr>
                                 </thead>
@@ -253,9 +255,10 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                             </td>
                                             <td style={{ padding: '0.75rem' }}>
                                                 <select value={u.role} onChange={e => setRole(u.id, e.target.value)} style={{ padding: '0.5rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: 'white', fontSize: '0.8rem' }}>
-                                                    <option value="user">👤 User</option>
-                                                    <option value="premium">⭐ Premium</option>
-                                                    <option value="admin">👑 Admin</option>
+                                                    <option value="user">👤 {t('role.user')}</option>
+                                                    <option value="premium">⭐ {t('role.premium')}</option>
+                                                    <option value="admin">🛡️ {t('role.admin')}</option>
+                                                    <option value="owner">👑 {t('role.owner')}</option>
                                                 </select>
                                             </td>
                                             <td style={{ padding: '0.75rem' }}>
@@ -276,7 +279,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                             </td>
                                             <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                                                 <button onClick={() => { setResetUserId(u.id); setResetUserEmail(u.email); setShowResetModal(true); }} style={{ padding: '0.4rem 0.75rem', background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem' }}>
-                                                    🔐 Reset hasła
+                                                    🔐 {t('admin.resetPassword')}
                                                 </button>
                                             </td>
                                         </tr>
@@ -286,7 +289,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                         ) : activeTab === 'groups' ? (
                             /* Groups */
                             <div>
-                                <button onClick={() => openGroupModal()} style={{ padding: '0.75rem 1.5rem', background: 'var(--accent)', color: 'black', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, marginBottom: '1rem' }}>➕ Nowa grupa</button>
+                                <button onClick={() => openGroupModal()} style={{ padding: '0.75rem 1.5rem', background: 'var(--accent)', color: 'black', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, marginBottom: '1rem' }}>➕ {t('admin.newGroup')}</button>
                                 <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
                                     {groups.map(g => (
                                         <div key={g.id} style={{ ...cardStyle, borderColor: g.color + '55' }}>
@@ -305,7 +308,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                                 {g.tool_ids.map(t => <span key={t} style={{ padding: '0.2rem 0.5rem', background: 'var(--accent)', color: 'black', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 600 }}>{TOOL_LABELS[t]?.split(' ')[1] || t}</span>)}
                                                 {g.tool_ids.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Brak narzędzi</span>}
                                             </div>
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>👥 {g.user_count} użytkowników</div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>👥 {g.user_count} {t('admin.users')}</div>
                                         </div>
                                     ))}
                                 </div>
@@ -318,7 +321,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                     <thead>
                                         <tr style={{ borderBottom: '1px solid var(--border)' }}>
                                             <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>Czas</th>
-                                            <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>Użytkownik</th>
+                                            <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>{t('role.user')}</th>
                                             <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>Akcja</th>
                                             <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>Szczegóły</th>
                                         </tr>
@@ -336,7 +339,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                                 <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.details || '-'}</td>
                                             </tr>
                                         ))}
-                                        {logs.length === 0 && <tr><td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Brak logów</td></tr>}
+                                        {logs.length === 0 && <tr><td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('stats.noData')}</td></tr>}
                                     </tbody>
                                 </table>
                             </div>
@@ -347,14 +350,14 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
             {/* Group Modal */}
             {showGroupModal && (
                 <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'var(--bg-primary)', borderRadius: '16px', padding: '1.5rem', width: '400px', border: '1px solid var(--border)', zIndex: 10001 }} onClick={e => e.stopPropagation()}>
-                    <h3 style={{ margin: '0 0 1rem 0' }}>{editingGroup ? '✏️ Edytuj grupę' : '➕ Nowa grupa'}</h3>
-                    <div style={{ marginBottom: '1rem' }}><label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>Nazwa</label><input value={groupName} onChange={e => setGroupName(e.target.value)} style={inputStyle} placeholder="np. Empik Team" /></div>
-                    <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem' }}><div style={{ flex: 1 }}><label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>Kolor</label><input type="color" value={groupColor} onChange={e => setGroupColor(e.target.value)} style={{ width: '100%', height: '40px', border: 'none', borderRadius: '8px', cursor: 'pointer' }} /></div></div>
+                    <h3 style={{ margin: '0 0 1rem 0' }}>{editingGroup ? `✏️ ${t('admin.editGroup')}` : `➕ ${t('admin.newGroup')}`}</h3>
+                    <div style={{ marginBottom: '1rem' }}><label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>{t('admin.groupName')}</label><input value={groupName} onChange={e => setGroupName(e.target.value)} style={inputStyle} placeholder="np. Empik Team" /></div>
+                    <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem' }}><div style={{ flex: 1 }}><label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>{t('admin.groupColor')}</label><input type="color" value={groupColor} onChange={e => setGroupColor(e.target.value)} style={{ width: '100%', height: '40px', border: 'none', borderRadius: '8px', cursor: 'pointer' }} /></div></div>
                     <div style={{ marginBottom: '1rem' }}><label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>Opis</label><input value={groupDescription} onChange={e => setGroupDescription(e.target.value)} style={inputStyle} placeholder="Opcjonalny opis..." /></div>
-                    <div style={{ marginBottom: '1.5rem' }}><label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>Dostęp do narzędzi</label><div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>{ALL_TOOLS.map(toolId => (<label key={toolId} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}><input type="checkbox" checked={groupTools.includes(toolId)} onChange={e => { if (e.target.checked) setGroupTools([...groupTools, toolId]); else setGroupTools(groupTools.filter(t => t !== toolId)); }} style={{ width: '18px', height: '18px', accentColor: 'var(--accent)' }} /><span>{TOOL_LABELS[toolId]}</span></label>))}</div></div>
+                    <div style={{ marginBottom: '1.5rem' }}><label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>{t('admin.groupTools')}</label><div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>{ALL_TOOLS.map(toolId => (<label key={toolId} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}><input type="checkbox" checked={groupTools.includes(toolId)} onChange={e => { if (e.target.checked) setGroupTools([...groupTools, toolId]); else setGroupTools(groupTools.filter(t => t !== toolId)); }} style={{ width: '18px', height: '18px', accentColor: 'var(--accent)' }} /><span>{TOOL_LABELS[toolId]}</span></label>))}</div></div>
                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                        <button onClick={() => setShowGroupModal(false)} style={{ padding: '0.75rem 1.25rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-muted)', cursor: 'pointer' }}>Anuluj</button>
-                        <button onClick={saveGroup} style={{ padding: '0.75rem 1.25rem', background: 'var(--accent)', border: 'none', borderRadius: '8px', color: 'black', cursor: 'pointer', fontWeight: 600 }}>{editingGroup ? 'Zapisz' : 'Utwórz'}</button>
+                        <button onClick={() => setShowGroupModal(false)} style={{ padding: '0.75rem 1.25rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
+                        <button onClick={saveGroup} style={{ padding: '0.75rem 1.25rem', background: 'var(--accent)', border: 'none', borderRadius: '8px', color: 'black', cursor: 'pointer', fontWeight: 600 }}>{editingGroup ? t('common.save') : t('admin.createGroup')}</button>
                     </div>
                 </div>
             )}
@@ -362,12 +365,12 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
             {/* Password Reset Modal */}
             {showResetModal && (
                 <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'var(--bg-primary)', borderRadius: '16px', padding: '1.5rem', width: '400px', border: '1px solid var(--border)', zIndex: 10001 }} onClick={e => e.stopPropagation()}>
-                    <h3 style={{ margin: '0 0 1rem 0' }}>🔐 Reset hasła</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>Resetujesz hasło dla: <strong>{resetUserEmail}</strong></p>
-                    <div style={{ marginBottom: '1.5rem' }}><label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>Nowe hasło</label><input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle} placeholder="Min. 8 znaków" /></div>
+                    <h3 style={{ margin: '0 0 1rem 0' }}>🔐 {t('admin.resetPassword')}</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem' }}>{t('admin.resetPasswordTitle')}: <strong>{resetUserEmail}</strong></p>
+                    <div style={{ marginBottom: '1.5rem' }}><label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>{t('profile.newPassword')}</label><input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle} placeholder="Min. 8 znaków" /></div>
                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                        <button onClick={() => { setShowResetModal(false); setNewPassword(''); }} style={{ padding: '0.75rem 1.25rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-muted)', cursor: 'pointer' }}>Anuluj</button>
-                        <button onClick={resetPassword} style={{ padding: '0.75rem 1.25rem', background: '#ef4444', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 600 }}>Resetuj hasło</button>
+                        <button onClick={() => { setShowResetModal(false); setNewPassword(''); }} style={{ padding: '0.75rem 1.25rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-muted)', cursor: 'pointer' }}>{t('common.cancel')}</button>
+                        <button onClick={resetPassword} style={{ padding: '0.75rem 1.25rem', background: '#ef4444', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 600 }}>{t('admin.resetPassword')}</button>
                     </div>
                 </div>
             )}

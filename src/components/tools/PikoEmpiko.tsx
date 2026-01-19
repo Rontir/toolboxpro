@@ -204,7 +204,7 @@ export default function PikoEmpiko() {
                         setDownloadUrl(apiUrl(`/api/download/${job_id}`));
                         addLog('Zakończono!', 'success');
                         if (soundEnabled) playSound();
-                        showSuccess('Plik gotowy!');
+                        showSuccess('Success!');
                     } else if (pData.status === 'error') {
                         clearInterval(poll);
                         setIsProcessing(false);

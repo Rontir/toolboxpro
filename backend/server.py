@@ -118,8 +118,8 @@ def require_user(user: Optional[User] = Depends(get_current_user)) -> User:
     return user
 
 def require_admin(user: User = Depends(require_user)) -> User:
-    """Require admin role."""
-    if user.role != UserRole.ADMIN:
+    """Require admin or owner role."""
+    if user.role not in [UserRole.ADMIN, UserRole.OWNER]:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
@@ -138,9 +138,9 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         if existing:
             raise HTTPException(status_code=400, detail="Email already registered")
         
-        # Check if this email should be auto-promoted to admin
+        # Check if this email should be auto-promoted to admin/owner
         admin_emails = os.getenv("ADMIN_EMAILS", "xmikezien@gmail.com").lower().split(",")
-        user_role = UserRole.ADMIN if user_data.email.lower() in admin_emails else UserRole.USER
+        user_role = UserRole.OWNER if user_data.email.lower() in admin_emails else UserRole.USER
         
         # Create user
         user = User(
@@ -186,6 +186,13 @@ async def login(credentials: UserLogin, request: Request, db: Session = Depends(
         db.commit()
     except Exception as e:
         print(f"Failed to log login: {e}")
+
+    # Auto-promote to OWNER if email matches (self-healing)
+    admin_emails = os.getenv("ADMIN_EMAILS", "xmikezien@gmail.com").lower().split(",")
+    if user.email.lower() in admin_emails and user.role != UserRole.OWNER:
+        user.role = UserRole.OWNER
+        db.commit()
+        db.refresh(user)
     
     return create_tokens(user.id, user.email, user.role.value)
 
@@ -225,7 +232,7 @@ async def get_accessible_tools(user: Optional[User] = Depends(get_current_user))
     if not user:
         # Guest - no restricted tools
         accessible = []
-    elif user.role in [UserRole.ADMIN, UserRole.PREMIUM]:
+    elif user.role in [UserRole.ADMIN, UserRole.OWNER, UserRole.PREMIUM]:
         # Full access
         accessible = RESTRICTED_TOOLS
     else:

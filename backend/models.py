@@ -13,6 +13,7 @@ class UserRole(str, enum.Enum):
     USER = "user"
     PREMIUM = "premium"
     ADMIN = "admin"
+    OWNER = "owner"
 
 # Many-to-many: users <-> groups
 user_groups = Table(
@@ -90,8 +91,8 @@ class User(Base):
     
     def has_tool_access(self, tool_id: str) -> bool:
         """Check if user has access to a specific tool."""
-        # Admins have access to everything
-        if self.role == UserRole.ADMIN:
+        # Admins and Owners have access to everything
+        if self.role in [UserRole.ADMIN, UserRole.OWNER]:
             return True
         
         # Premium users have access to all tools

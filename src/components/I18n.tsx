@@ -91,6 +91,75 @@ const translations = {
         'tip.darkmode': 'Kliknij ikonę słońca/księżyca aby przełączyć tryb jasny/ciemny.',
         'tip.stats': 'Wszystkie przetworzone pliki są liczone w statystykach!',
         'tip.excel': 'Excel Splitter może podzielić plik na setki arkuszy w sekundy.',
+
+        // Auth
+        'auth.login': 'Zaloguj się',
+        'auth.register': 'Zarejestruj się',
+        'auth.logout': 'Wyloguj',
+        'auth.myProfile': 'Mój Profil',
+        'auth.adminPanel': 'Panel Admina',
+        'auth.forgotPassword': 'Zapomniałeś hasła?',
+        'auth.noAccount': 'Nie masz konta?',
+        'auth.hasAccount': 'Masz już konto?',
+        'auth.email': 'Email',
+        'auth.password': 'Hasło',
+        'auth.confirmPassword': 'Powtórz hasło',
+        'auth.loggingIn': 'Logowanie...',
+        'auth.registering': 'Rejestracja...',
+        'auth.loginSuccess': 'Zalogowano pomyślnie!',
+        'auth.logoutSuccess': 'Wylogowano pomyślnie',
+        'auth.registerSuccess': 'Konto utworzone pomyślnie!',
+        'auth.forgotPasswordAlert': 'W celu zresetowania hasła skontaktuj się z administratorem systemu.',
+        'auth.passwordMinLength': 'Hasło musi mieć minimum 8 znaków',
+        'auth.passwordsNotMatch': 'Hasła nie są identyczne',
+        'auth.errorLogin': 'Błąd logowania',
+        'auth.errorRegister': 'Błąd rejestracji',
+
+        // Profile
+        'profile.title': 'Mój Profil',
+        'profile.tab.data': 'Dane',
+        'profile.tab.password': 'Hasło',
+        'profile.displayName': 'Nazwa wyświetlana',
+        'profile.role': 'Rola',
+        'profile.currentPassword': 'Aktualne hasło',
+        'profile.newPassword': 'Nowe hasło',
+        'profile.confirmPassword': 'Powtórz nowe hasło',
+        'profile.optional': '(opcjonalne)',
+        'profile.updateSuccess': 'Profil zaktualizowany',
+        'profile.passwordSuccess': 'Hasło zmienione',
+        'profile.saving': 'Zapisywanie...',
+
+        // Admin
+        'admin.title': 'Panel Administratora',
+        'admin.tab.dashboard': 'Dashboard',
+        'admin.tab.users': 'Użytkownicy',
+        'admin.tab.groups': 'Grupy',
+        'admin.tab.logs': 'Logi',
+        'admin.users': 'Użytkowników',
+        'admin.groups': 'Grup',
+        'admin.logins24h': 'Logowań (24h)',
+        'admin.logins7d': 'Logowań (7 dni)',
+        'admin.activeUsers': 'Najaktywniejsi użytkownicy',
+        'admin.resetPassword': 'Reset hasła',
+        'admin.newGroup': 'Nowa grupa',
+        'admin.editGroup': 'Edytuj grupę',
+        'admin.groupName': 'Nazwa grupy',
+        'admin.groupColor': 'Kolor grupy',
+        'admin.groupTools': 'Dostępne narzędzia',
+        'admin.groupUsers': 'Przypisani użytkownicy',
+        'admin.createGroup': 'Utwórz grupę',
+        'admin.updateGroup': 'Zaktualizuj grupę',
+        'admin.deleteGroup': 'Usuń grupę',
+        'admin.confirmDeleteGroup': 'Czy na pewno chcesz usunąć tę grupę?',
+        'admin.resetPasswordTitle': 'Reset hasła użytkownika',
+        'admin.resetPasswordSuccess': 'Hasło zostało zresetowane',
+
+        // Roles
+        'role.admin': 'Administrator',
+        'role.owner': 'Właściciel',
+        'role.premium': 'Premium',
+        'role.user': 'Użytkownik',
+        'role.guest': 'Gość',
     },
     en: {
         // Navigation
@@ -175,6 +244,75 @@ const translations = {
         'tip.darkmode': 'Click the sun/moon icon to switch between light and dark mode.',
         'tip.stats': 'All processed files are counted in the statistics!',
         'tip.excel': 'Excel Splitter can split a file into hundreds of sheets in seconds.',
+
+        // Auth
+        'auth.login': 'Login',
+        'auth.register': 'Register',
+        'auth.logout': 'Logout',
+        'auth.myProfile': 'My Profile',
+        'auth.adminPanel': 'Admin Panel',
+        'auth.forgotPassword': 'Forgot password?',
+        'auth.noAccount': "Don't have an account?",
+        'auth.hasAccount': 'Already have an account?',
+        'auth.email': 'Email',
+        'auth.password': 'Password',
+        'auth.confirmPassword': 'Confirm password',
+        'auth.loggingIn': 'Logging in...',
+        'auth.registering': 'Registering...',
+        'auth.loginSuccess': 'Logged in successfully!',
+        'auth.logoutSuccess': 'Logged out successfully',
+        'auth.registerSuccess': 'Account created successfully!',
+        'auth.forgotPasswordAlert': 'To reset your password, please contact the system administrator.',
+        'auth.passwordMinLength': 'Password must be at least 8 characters',
+        'auth.passwordsNotMatch': 'Passwords do not match',
+        'auth.errorLogin': 'Login failed',
+        'auth.errorRegister': 'Registration failed',
+
+        // Profile
+        'profile.title': 'My Profile',
+        'profile.tab.data': 'Data',
+        'profile.tab.password': 'Password',
+        'profile.displayName': 'Display Name',
+        'profile.role': 'Role',
+        'profile.currentPassword': 'Current Password',
+        'profile.newPassword': 'New Password',
+        'profile.confirmPassword': 'Confirm New Password',
+        'profile.optional': '(optional)',
+        'profile.updateSuccess': 'Profile updated',
+        'profile.passwordSuccess': 'Password changed',
+        'profile.saving': 'Saving...',
+
+        // Admin
+        'admin.title': 'Admin Panel',
+        'admin.tab.dashboard': 'Dashboard',
+        'admin.tab.users': 'Users',
+        'admin.tab.groups': 'Groups',
+        'admin.tab.logs': 'Logs',
+        'admin.users': 'Users',
+        'admin.groups': 'Groups',
+        'admin.logins24h': 'Logins (24h)',
+        'admin.logins7d': 'Logins (7 days)',
+        'admin.activeUsers': 'Top Active Users',
+        'admin.resetPassword': 'Reset Password',
+        'admin.newGroup': 'New Group',
+        'admin.editGroup': 'Edit Group',
+        'admin.groupName': 'Group Name',
+        'admin.groupColor': 'Group Color',
+        'admin.groupTools': 'Available Tools',
+        'admin.groupUsers': 'Assigned Users',
+        'admin.createGroup': 'Create Group',
+        'admin.updateGroup': 'Update Group',
+        'admin.deleteGroup': 'Delete Group',
+        'admin.confirmDeleteGroup': 'Are you sure you want to delete this group?',
+        'admin.resetPasswordTitle': 'Reset User Password',
+        'admin.resetPasswordSuccess': 'Password has been reset',
+
+        // Roles
+        'role.admin': 'Administrator',
+        'role.owner': 'Owner',
+        'role.premium': 'Premium',
+        'role.user': 'User',
+        'role.guest': 'Guest',
     }
 };
 
@@ -204,7 +342,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const t = useCallback((key: TranslationKey): string => {
-        return translations[language][key] || key;
+        return translations[language][key] || translations['pl'][key] || key;
     }, [language]);
 
     return (
@@ -235,7 +373,8 @@ export function LanguageSwitcher() {
                 fontSize: '0.85rem',
                 fontWeight: 700,
                 color: 'var(--accent)',
-                letterSpacing: '0.5px'
+                letterSpacing: '0.5px',
+                cursor: 'pointer'
             }}
         >
             {language.toUpperCase()}
