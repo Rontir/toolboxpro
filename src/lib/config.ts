@@ -9,7 +9,7 @@ export const config = {
         baseUrl: process.env.NEXT_PUBLIC_API_URL ||
             (process.env.NODE_ENV === 'production'
                 ? 'https://toolboxpro-api.onrender.com'
-                : 'http://localhost:8000'),
+                : 'http://127.0.0.1:8000'),
         healthEndpoint: '/api/health',
         timeout: 30000, // 30 seconds
     },
