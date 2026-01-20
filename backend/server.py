@@ -63,6 +63,7 @@ def cleanup_job(job_id):
     # Optional: cleanup old jobs after some time
     pass
 
+origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://toolboxpro.onrender.com",
