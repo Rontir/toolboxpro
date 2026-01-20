@@ -63,7 +63,6 @@ def cleanup_job(job_id):
     # Optional: cleanup old jobs after some time
     pass
 
-# CORS setup
 origins = [
     "http://localhost:3000",
     "https://toolboxpro.onrender.com",
