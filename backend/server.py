@@ -97,6 +97,18 @@ async def health_check():
         "auth_available": AUTH_AVAILABLE
     })
 
+# ==================== DEBUG ENDPOINTS ====================
+@app.get("/api/debug/reset-account")
+async def reset_account(email: str, db: Session = Depends(get_db)):
+    """Temporary endpoint to reset a user account."""
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        return {"status": "error", "message": "User not found"}
+    
+    db.delete(user)
+    db.commit()
+    return {"status": "success", "message": f"User {email} deleted. You can now register again."}
+
 # ==================== AUTHENTICATION ENDPOINTS ====================
 
 def get_current_user(
