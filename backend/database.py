@@ -50,5 +50,28 @@ def get_db():
         db.close()
 
 def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and run migrations."""
+    from sqlalchemy import text
+    
+    # Run migrations for PostgreSQL enum types
+    if "postgresql" in DATABASE_URL:
+        try:
+            with engine.connect() as conn:
+                # Check if OWNER exists in the enum
+                result = conn.execute(text(
+                    "SELECT enumlabel FROM pg_enum WHERE enumtypid = "
+                    "(SELECT oid FROM pg_type WHERE typname = 'userrole')"
+                ))
+                existing_values = [row[0] for row in result]
+                
+                if 'OWNER' not in existing_values:
+                    print("🔧 Adding OWNER to userrole enum...")
+                    conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'OWNER'"))
+                    conn.commit()
+                    print("✅ OWNER added to userrole enum")
+                else:
+                    print("✅ OWNER already exists in userrole enum")
+        except Exception as e:
+            print(f"⚠️ Enum migration skipped (may not exist yet): {e}")
+    
     Base.metadata.create_all(bind=engine)
