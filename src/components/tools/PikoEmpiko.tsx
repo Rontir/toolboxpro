@@ -597,7 +597,7 @@ export default function PikoEmpiko() {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                                         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: validateEnabled ? 'var(--accent)' : 'var(--text-gray)' }}>
                                             <input type="checkbox" checked={validateEnabled} onChange={e => setValidateEnabled(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
-                                            🔍 Walidacja obrazów:
+                                            🔍 Walidacja obrazów (wymiary):
                                         </label>
                                         {validateEnabled && (
                                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -619,20 +619,20 @@ export default function PikoEmpiko() {
                                                         style={{ width: '60px', padding: '0.25rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text-white)', fontSize: '0.75rem' }}
                                                     />
                                                 </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tolerancja:</span>
-                                                    <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        min="0"
-                                                        max="2"
-                                                        value={ratioTolerance}
-                                                        onChange={e => setRatioTolerance(Number(e.target.value))}
-                                                        style={{ width: '50px', padding: '0.25rem', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '4px', color: 'var(--text-white)', fontSize: '0.75rem' }}
-                                                    />
-                                                </div>
                                             </div>
                                         )}
+                                    </div>
+
+                                    {/* Advanced AI Validation */}
+                                    <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-white)', fontSize: '0.85rem' }}>
+                                            <span style={{ fontSize: '1rem' }}>🤖</span>
+                                            AI Walidacja Tła (BETA)
+                                            <span style={{ fontSize: '0.7rem', background: 'var(--accent)', color: 'black', padding: '1px 4px', borderRadius: '4px' }}>NEW</span>
+                                        </label>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', marginLeft: '1.5rem' }}>
+                                            Sprawdza czy tło jest idealnie białe (wymóg Empik). Działa wolniej.
+                                        </p>
                                     </div>
 
                                     {/* Batch Size */}

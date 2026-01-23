@@ -109,6 +109,58 @@ async def reset_account(email: str, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "success", "message": f"User {email} deleted. You can now register again."}
 
+# ==================== EMPIK TOOLS ENDPOINTS ====================
+
+class PriceMonitorRequest(BaseModel):
+    eans: List[str]
+    my_shop_name: Optional[str] = None
+
+@app.post("/api/price-monitor")
+async def price_monitor(request: PriceMonitorRequest, user: User = Depends(require_user)):
+    """Check prices and Buy Box status for given EANs."""
+    try:
+        from backend_processor import PriceMonitor
+        results = PriceMonitor.check_prices(request.eans, request.my_shop_name)
+        return {"status": "success", "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class AiDescriptionRequest(BaseModel):
+    name: str
+    features: List[str]
+    specs: Dict[str, str]
+
+@app.post("/api/ai-description")
+async def ai_description(request: AiDescriptionRequest, user: User = Depends(require_user)):
+    """Generate HTML description for Empik."""
+    try:
+        from backend_processor import AiGenerator
+        html = AiGenerator.generate_description(request.dict())
+        return {"status": "success", "html": html}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/validate-image")
+async def validate_image(file: UploadFile = File(...), user: User = Depends(require_user)):
+    """Validate image for Empik requirements (white background)."""
+    try:
+        from backend_processor import ImageValidator
+        
+        # Save temp file
+        temp_path = f"temp_{file.filename}"
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        result = ImageValidator.check_white_background(temp_path)
+        
+        # Cleanup
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+        return {"status": "success", "validation": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== AUTHENTICATION ENDPOINTS ====================
 
 def get_current_user(

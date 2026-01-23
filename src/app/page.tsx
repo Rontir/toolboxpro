@@ -39,13 +39,15 @@ import BatchRenamer from '@/components/tools/BatchRenamer';
 import BatchProcessor from '@/components/tools/BatchProcessor';
 import PriceCalculator from '@/components/tools/PriceCalculator';
 import SeoMetaGenerator from '@/components/tools/SeoMetaGenerator';
+import PriceMonitor from '@/components/tools/PriceMonitor';
+import AiGenerator from '@/components/tools/AiGenerator';
 import DesignToggle from '@/components/DesignToggle';
 import { BackendStatusIndicator } from '@/hooks/useBackendStatus';
 import UserMenu from '@/components/auth/UserMenu';
 import AdminPanel from '@/components/admin/AdminPanel';
 import { useAuth, RESTRICTED_TOOLS } from '@/contexts/AuthContext';
 
-type ToolId = 'dashboard' | 'piko-empiko' | 'image-converter' | 'excel-splitter' | 'html-fixer' | 'ean-checker' | 'json-html' | 'desc-html' | 'perfume' | 'cropper' | 'struktur' | 'compare' | 'joiner' | 'translator' | 'emoji-remover' | 'batch-renamer' | 'batch-processor' | 'price-calc' | 'seo-meta';
+type ToolId = 'dashboard' | 'piko-empiko' | 'image-converter' | 'excel-splitter' | 'html-fixer' | 'ean-checker' | 'json-html' | 'desc-html' | 'perfume' | 'cropper' | 'struktur' | 'compare' | 'joiner' | 'translator' | 'emoji-remover' | 'batch-renamer' | 'batch-processor' | 'price-calc' | 'seo-meta' | 'price-monitor' | 'ai-generator';
 
 interface Tool {
   id: ToolId;
@@ -75,6 +77,8 @@ const TOOLS: Tool[] = [
   { id: 'batch-processor', icon: '⚡', name: 'Batch Processor', desc: 'Pipeline operacji', badge: 'JS' },
   { id: 'price-calc', icon: '💰', name: 'Kalkulator cen', desc: 'Marża, VAT, rabaty', badge: 'JS' },
   { id: 'seo-meta', icon: '🎯', name: 'SEO Generator', desc: 'Meta tagi, Schema', badge: 'JS' },
+  { id: 'price-monitor', icon: '🕵️', name: 'Monitor Cen', desc: 'Buy Box & Konkurencja', badge: 'Python' },
+  { id: 'ai-generator', icon: '📝', name: 'Generator Opisów', desc: 'HTML pod Empik', badge: 'Python' },
 ];
 
 function Placeholder({ name }: { name: string }) {
@@ -441,6 +445,8 @@ export default function Home() {
                           {activeTool === 'batch-processor' && <BatchProcessor />}
                           {activeTool === 'price-calc' && <PriceCalculator />}
                           {activeTool === 'seo-meta' && <SeoMetaGenerator />}
+                          {activeTool === 'price-monitor' && <PriceMonitor />}
+                          {activeTool === 'ai-generator' && <AiGenerator />}
                         </main>
                       </div>
                     </div>
