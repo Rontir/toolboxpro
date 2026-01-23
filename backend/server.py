@@ -161,6 +161,72 @@ async def validate_image(file: UploadFile = File(...), user: User = Depends(requ
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== ACTIVITY LOGGING ENDPOINTS ====================
+
+from models import ActivityLog
+
+class LogActivityRequest(BaseModel):
+    action: str  # tool_use, page_view, etc.
+    details: Optional[str] = None
+
+@app.post("/api/log-activity")
+async def log_activity(
+    request: LogActivityRequest,
+    req: Request,
+    db: Session = Depends(get_db),
+    user: Optional[User] = Depends(get_current_user)
+):
+    """Log an activity. Works for both authenticated users and guests."""
+    try:
+        log = ActivityLog(
+            user_id=user.id if user else None,
+            action=request.action,
+            details=request.details,
+            ip_address=req.client.host if req.client else None,
+            user_agent=req.headers.get("user-agent", "")[:500]  # Limit length
+        )
+        db.add(log)
+        db.commit()
+        return {"status": "success"}
+    except Exception as e:
+        logging.error(f"Failed to log activity: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/admin/activity-logs")
+async def get_activity_logs(
+    limit: int = 100,
+    offset: int = 0,
+    action_filter: Optional[str] = None,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get activity logs (admin only)."""
+    query = db.query(ActivityLog).order_by(ActivityLog.created_at.desc())
+    
+    if action_filter:
+        query = query.filter(ActivityLog.action == action_filter)
+    
+    total = query.count()
+    logs = query.offset(offset).limit(limit).all()
+    
+    return {
+        "status": "success",
+        "total": total,
+        "logs": [
+            {
+                "id": log.id,
+                "user_id": log.user_id,
+                "user_email": log.user.email if log.user else None,
+                "user_name": log.user.display_name if log.user else "Gość",
+                "action": log.action,
+                "details": log.details,
+                "ip_address": log.ip_address,
+                "created_at": log.created_at.isoformat() if log.created_at else None
+            }
+            for log in logs
+        ]
+    }
+
 # ==================== AUTHENTICATION ENDPOINTS ====================
 
 def get_current_user(

@@ -65,12 +65,16 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
             const [usersRes, groupsRes, logsRes, statsRes] = await Promise.all([
                 fetch(apiUrl('/api/admin/users'), { headers: { 'Authorization': `Bearer ${getToken()}` } }),
                 fetch(apiUrl('/api/admin/groups'), { headers: { 'Authorization': `Bearer ${getToken()}` } }),
-                fetch(apiUrl('/api/admin/activity-logs?limit=50'), { headers: { 'Authorization': `Bearer ${getToken()}` } }),
+                fetch(apiUrl('/api/admin/activity-logs?limit=100'), { headers: { 'Authorization': `Bearer ${getToken()}` } }),
                 fetch(apiUrl('/api/admin/dashboard-stats'), { headers: { 'Authorization': `Bearer ${getToken()}` } })
             ]);
             if (usersRes.ok) setUsers(await usersRes.json());
             if (groupsRes.ok) setGroups(await groupsRes.json());
-            if (logsRes.ok) setLogs(await logsRes.json());
+            if (logsRes.ok) {
+                const logsData = await logsRes.json();
+                // Handle both old array format and new {status, logs} format
+                setLogs(Array.isArray(logsData) ? logsData : (logsData.logs || []));
+            }
             if (statsRes.ok) setStats(await statsRes.json());
         } catch { setError(t('common.error')); }
         finally { setIsLoading(false); }
@@ -316,7 +320,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                         ) : (
                             /* Logs */
                             <div>
-                                <div style={{ marginBottom: '1rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Ostatnie 50 akcji</div>
+                                <div style={{ marginBottom: '1rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Ostatnie 100 akcji (włącznie z gośćmi)</div>
                                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
                                         <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -324,22 +328,30 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                             <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>{t('role.user')}</th>
                                             <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>Akcja</th>
                                             <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>Szczegóły</th>
+                                            <th style={{ padding: '0.75rem', textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500 }}>IP</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {logs.map(log => (
                                             <tr key={log.id} style={{ borderBottom: '1px solid var(--border)' }}>
                                                 <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{log.created_at ? new Date(log.created_at).toLocaleString('pl-PL') : '-'}</td>
-                                                <td style={{ padding: '0.75rem', fontSize: '0.85rem' }}>{log.user_email || '-'}</td>
+                                                <td style={{ padding: '0.75rem', fontSize: '0.85rem' }}>
+                                                    {log.user_email ? (
+                                                        <span title={log.user_email}>{(log as any).user_name || log.user_email}</span>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>👤 Gość</span>
+                                                    )}
+                                                </td>
                                                 <td style={{ padding: '0.75rem' }}>
-                                                    <span style={{ padding: '0.25rem 0.5rem', background: log.action.includes('login') ? 'rgba(34,197,94,0.2)' : log.action.includes('password') ? 'rgba(239,68,68,0.2)' : 'var(--bg-tertiary)', borderRadius: '4px', fontSize: '0.75rem' }}>
+                                                    <span style={{ padding: '0.25rem 0.5rem', background: log.action.includes('login') ? 'rgba(34,197,94,0.2)' : log.action.includes('password') ? 'rgba(239,68,68,0.2)' : log.action.includes('tool') ? 'rgba(99,102,241,0.2)' : 'var(--bg-tertiary)', borderRadius: '4px', fontSize: '0.75rem' }}>
                                                         {log.action}
                                                     </span>
                                                 </td>
                                                 <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.details || '-'}</td>
+                                                <td style={{ padding: '0.75rem', fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--text-muted)' }}>{log.ip_address || '-'}</td>
                                             </tr>
                                         ))}
-                                        {logs.length === 0 && <tr><td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('stats.noData')}</td></tr>}
+                                        {logs.length === 0 && <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('stats.noData')}</td></tr>}
                                     </tbody>
                                 </table>
                             </div>
