@@ -12,6 +12,7 @@ from datetime import datetime
 import shutil
 import json
 from typing import List, Dict, Optional
+from pydantic import BaseModel
 # from backend_processor import process_perfume_data, EanChecker, StructureMatcher, PikoEmpiko, PikoEmpikoLocal
 
 # Auth imports - wrapped in try-except for debugging
