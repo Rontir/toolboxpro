@@ -119,7 +119,7 @@ class PriceMonitorRequest(BaseModel):
 async def price_monitor(request: PriceMonitorRequest, user: User = Depends(require_user)):
     """Check prices and Buy Box status for given EANs."""
     try:
-        from backend_processor import PriceMonitor
+        from empik_tools import PriceMonitor
         results = PriceMonitor.check_prices(request.eans, request.my_shop_name)
         return {"status": "success", "results": results}
     except Exception as e:
@@ -134,7 +134,7 @@ class AiDescriptionRequest(BaseModel):
 async def ai_description(request: AiDescriptionRequest, user: User = Depends(require_user)):
     """Generate HTML description for Empik."""
     try:
-        from backend_processor import AiGenerator
+        from empik_tools import AiGenerator
         html = AiGenerator.generate_description(request.dict())
         return {"status": "success", "html": html}
     except Exception as e:
@@ -144,7 +144,7 @@ async def ai_description(request: AiDescriptionRequest, user: User = Depends(req
 async def validate_image(file: UploadFile = File(...), user: User = Depends(require_user)):
     """Validate image for Empik requirements (white background)."""
     try:
-        from backend_processor import ImageValidator
+        from empik_tools import ImageValidator
         
         # Save temp file
         temp_path = f"temp_{file.filename}"
