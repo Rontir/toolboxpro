@@ -6,7 +6,7 @@ import { useDropzone } from 'react-dropzone';
 import { ReactCompareSlider, ReactCompareSliderImage } from 'react-compare-slider';
 import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import { FiUpload, FiDownload, Fiscissors, FiTrash2, FiRefreshCw, FiImage } from 'react-icons/fi';
+import { FiUpload, FiDownload, FiScissors, FiTrash2, FiRefreshCw, FiImage } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 
 interface ClearcutAIProps {
@@ -92,7 +92,7 @@ export default function ClearcutAI({ }: ClearcutAIProps) {
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h2 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-violet-500 bg-clip-text text-transparent flex items-center gap-2">
-                        <Fiscissors /> Clearcut AI
+                        <FiScissors /> Clearcut AI
                     </h2>
                     <p className="text-gray-500 dark:text-gray-400">Instantly remove backgrounds from images</p>
                 </div>
@@ -141,7 +141,7 @@ export default function ClearcutAI({ }: ClearcutAIProps) {
                             {processedImageUrl ? (
                                 <ReactCompareSlider
                                     itemOne={<ReactCompareSliderImage src={originalImageUrl} alt="Original" />}
-                                    itemTwo={<ReactCompareSliderImage src={processedImageUrl} alt="Processed" style={{ background: 'url(https://img.freepik.com/free-vector/checkered-pattern_1017-9430.jpg?w=740&t=st=1708704259~exp=1708704859~hmac=a41c10d3f20d7d6f5f3e2e2a5d5a8c1c0c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c) repeat' }} />} // Using a reliable transparency grid or css pattern
+                                    itemTwo={<ReactCompareSliderImage src={processedImageUrl} alt="Processed" style={{ background: 'url(https://img.freepik.com/free-vector/checkered-pattern_1017-9430.jpg?w=740&t=st=1708704259~exp=1708704859~hmac=a41c10d3f20d7d6f5f3e2e2a5d5a8c1c0c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c) repeat' }} />}
                                     className="h-full w-full object-contain"
                                     style={{ height: '100%', width: '100%' }}
                                 />
