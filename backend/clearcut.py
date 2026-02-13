@@ -10,12 +10,9 @@ logger = logging.getLogger(__name__)
 class ClearcutEngine:
     def __init__(self):
         # Initialize session on first use or startup to load model
-        try:
-            self.session = new_session("u2net")
-            logger.info("ClearcutEngine: rembg session initialized successfully")
-        except Exception as e:
-            logger.error(f"ClearcutEngine: Failed to initialize rembg session: {e}")
-            self.session = None
+        # Using 'u2netp' (lightweight version) to save memory on Render
+        self.model_name = "u2netp" 
+        self.session = None
 
     def remove_background(self, image_data: bytes) -> bytes:
         """
@@ -23,8 +20,13 @@ class ClearcutEngine:
         Returns the processed image as bytes (PNG).
         """
         if not self.session:
-            # Try to re-initialize if failed previously
-            self.session = new_session("u2net")
+            # Lazy initialization to prevent startup timeouts
+            try:
+                self.session = new_session(self.model_name)
+                logger.info(f"ClearcutEngine: rembg session ({self.model_name}) initialized successfully")
+            except Exception as e:
+                logger.error(f"ClearcutEngine: Failed to initialize rembg session: {e}")
+                raise
 
         try:
             return remove(image_data, session=self.session)

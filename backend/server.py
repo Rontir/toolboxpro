@@ -14,10 +14,15 @@ import json
 from typing import List, Dict, Optional
 from pydantic import BaseModel
 # from backend_processor import process_perfume_data, EanChecker, StructureMatcher, PikoEmpiko, PikoEmpikoLocal
-from clearcut import ClearcutEngine
-
-# Initialize Clearcut Engine
-clearcut_engine = ClearcutEngine()
+try:
+    from clearcut import ClearcutEngine
+    # Initialize Clearcut Engine
+    clearcut_engine = ClearcutEngine()
+    CLEARCUT_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Clearcut AI module could not be loaded: {e}")
+    CLEARCUT_AVAILABLE = False
+    clearcut_engine = None
 
 # Auth imports - wrapped in try-except for debugging
 AUTH_AVAILABLE = False
@@ -1042,6 +1047,9 @@ async def remove_background(
     file: UploadFile = File(...)
 ):
     """Remove background from uploaded image."""
+    if not CLEARCUT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Clearcut AI service is unavailable on this server (missing dependencies)")
+        
     try:
         contents = await file.read()
         
@@ -1063,6 +1071,9 @@ async def process_image(
     quality: int = Form(90)
 ):
     """Process image (crop, format, resize)."""
+    if not CLEARCUT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Clearcut AI service is unavailable on this server (missing dependencies)")
+
     try:
         contents = await file.read()
         
