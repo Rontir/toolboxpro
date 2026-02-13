@@ -14,6 +14,10 @@ import json
 from typing import List, Dict, Optional
 from pydantic import BaseModel
 # from backend_processor import process_perfume_data, EanChecker, StructureMatcher, PikoEmpiko, PikoEmpikoLocal
+from clearcut import ClearcutEngine
+
+# Initialize Clearcut Engine
+clearcut_engine = ClearcutEngine()
 
 # Auth imports - wrapped in try-except for debugging
 AUTH_AVAILABLE = False
@@ -1030,6 +1034,70 @@ async def download_result(job_id: str):
     
     # For Local Modes (JSON result)
     return JSONResponse(status_code=200, content=result)
+
+# ==================== CLEARCUT AI ENDPOINTS ====================
+
+@app.post("/api/clearcut/remove-bg")
+async def remove_background(
+    file: UploadFile = File(...)
+):
+    """Remove background from uploaded image."""
+    try:
+        contents = await file.read()
+        
+        # Process in thread pool to avoid blocking
+        import asyncio
+        loop = asyncio.get_event_loop()
+        processed_data = await loop.run_in_executor(None, clearcut_engine.remove_background, contents)
+        
+        return StreamingResponse(io.BytesIO(processed_data), media_type="image/png")
+    except Exception as e:
+        print(f"Error in remove_background: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/clearcut/process")
+async def process_image(
+    file: UploadFile = File(...),
+    crop_box: Optional[str] = Form(None), # JSON string "[x1, y1, x2, y2]"
+    format: str = Form("PNG"),
+    quality: int = Form(90)
+):
+    """Process image (crop, format, resize)."""
+    try:
+        contents = await file.read()
+        
+        # Parse crop box if provided
+        crop_tuple = None
+        if crop_box:
+            try:
+                crop_list = json.loads(crop_box)
+                if len(crop_list) == 4:
+                    crop_tuple = tuple(crop_list)
+            except:
+                pass
+        
+        # Process in thread pool
+        import asyncio
+        loop = asyncio.get_event_loop()
+        processed_data = await loop.run_in_executor(
+            None, 
+            clearcut_engine.process_image, 
+            contents, 
+            crop_tuple, 
+            format, 
+            quality
+        )
+        
+        media_type = "image/png"
+        if format.upper() == "JPEG":
+            media_type = "image/jpeg"
+        elif format.upper() == "WEBP":
+            media_type = "image/webp"
+            
+        return StreamingResponse(io.BytesIO(processed_data), media_type=media_type)
+    except Exception as e:
+        print(f"Error in process_image: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/browse-folder")
 async def browse_folder():
