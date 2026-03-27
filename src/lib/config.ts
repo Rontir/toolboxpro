@@ -3,13 +3,22 @@
  * Centralized access to environment variables with type safety
  */
 
+function resolveApiBaseUrl(): string {
+    if (process.env.NEXT_PUBLIC_API_URL !== undefined) {
+        return process.env.NEXT_PUBLIC_API_URL;
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+        return 'http://127.0.0.1:8000';
+    }
+
+    return 'https://toolboxpro-api.onrender.com';
+}
+
 export const config = {
     // API Configuration
     api: {
-        baseUrl: process.env.NEXT_PUBLIC_API_URL ||
-            (process.env.NODE_ENV === 'development'
-                ? 'http://127.0.0.1:8000'
-                : ''),
+        baseUrl: resolveApiBaseUrl(),
         healthEndpoint: '/api/health',
         timeout: 30000, // 30 seconds
     },
