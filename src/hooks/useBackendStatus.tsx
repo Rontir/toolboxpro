@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { apiUrl } from '@/lib/config';
 
 interface BackendStatus {
     isOnline: boolean;
@@ -18,15 +17,15 @@ export function useBackendStatus(checkInterval: number = 30000) {
 
     useEffect(() => {
         const checkBackend = async () => {
-            const url = apiUrl('/api/health');
-            console.log('Checking backend health at:', url);
+            const url = '/api/health';
+            console.log('LOCAL API health check:', url);
             setStatus(prev => ({ ...prev, checking: true }));
 
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-                const response = await fetch(apiUrl('/api/health'), {
+                const response = await fetch(url, {
                     method: 'GET',
                     signal: controller.signal,
                 });
