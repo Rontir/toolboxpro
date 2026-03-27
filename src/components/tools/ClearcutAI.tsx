@@ -8,6 +8,7 @@ import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { FiUpload, FiDownload, FiScissors, FiTrash2, FiRefreshCw, FiImage } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
+import { apiUrl } from '@/lib/config';
 
 interface ClearcutAIProps {
     // Props if needed
@@ -50,7 +51,7 @@ export default function ClearcutAI({ }: ClearcutAIProps) {
 
         try {
             // Use the newly created API endpoint
-            const response = await fetch('http://localhost:8000/api/clearcut/remove-bg', {
+            const response = await fetch(apiUrl('/api/clearcut/remove-bg'), {
                 method: 'POST',
                 body: formData,
             });

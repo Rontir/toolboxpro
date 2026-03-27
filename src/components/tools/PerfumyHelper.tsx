@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { apiUrl } from '@/lib/config';
 
 interface DictFile {
     name: string;
@@ -57,7 +58,7 @@ export default function PerfumyHelper() {
             setProgress(30);
             setProgressText('Przetwarzanie danych...');
 
-            const res = await fetch('http://localhost:8000/api/process-perfumes', {
+            const res = await fetch(apiUrl('/api/process-perfumes'), {
                 method: 'POST',
                 body: formData
             });

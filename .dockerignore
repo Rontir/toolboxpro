@@ -1,0 +1,12 @@
+.git
+.gitignore
+.next
+node_modules
+npm-debug.log
+README.md
+backend/__pycache__
+backend/*.pyc
+backend/temp_processing/*
+backend/output.txt
+backend/result.log
+backend/admin_log.txt

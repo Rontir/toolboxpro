@@ -48,6 +48,20 @@ except Exception as e:
 
 app = FastAPI(title="ToolBox Pro API")
 
+
+def get_cors_origins() -> List[str]:
+    """Return allowed CORS origins from env or sensible local defaults."""
+    raw_origins = os.getenv("CORS_ORIGINS", "")
+    if raw_origins.strip():
+        return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
+    return [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://toolboxpro.onrender.com",
+        "https://toolboxpro-api.onrender.com",
+    ]
+
 # Initialize database on startup (only if auth is available)
 @app.on_event("startup")
 def startup_event():
@@ -73,12 +87,7 @@ def cleanup_job(job_id):
     # Optional: cleanup old jobs after some time
     pass
 
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://toolboxpro.onrender.com",
-    "https://toolboxpro-api.onrender.com"
-]
+origins = get_cors_origins()
 
 app.add_middleware(
     CORSMiddleware,
@@ -1163,4 +1172,3 @@ if __name__ == "__main__":
     print(f"🚀 ToolBox Pro Backend running on port {port}")
     print("📝 Frontend: http://localhost:3000 (Next.js)")
     uvicorn.run(app, host="0.0.0.0", port=port)
-

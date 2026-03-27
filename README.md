@@ -2,6 +2,21 @@
 
 Zestaw narzędzi do przetwarzania plików Excel, obrazów i innych zadań.
 
+## Proxmox / Docker
+
+Do lokalnego wdrożenia na Proxmoxie użyj plików:
+
+- [docker-compose.yml](/home/mike/Documents/toolboxpro/docker-compose.yml)
+- [Dockerfile.frontend](/home/mike/Documents/toolboxpro/Dockerfile.frontend)
+- [Dockerfile.backend](/home/mike/Documents/toolboxpro/Dockerfile.backend)
+- [DEPLOY_PROXMOX.md](/home/mike/Documents/toolboxpro/DEPLOY_PROXMOX.md)
+
+Najważniejsze:
+
+1. Podmień adres IP w `docker-compose.yml`.
+2. Uruchom `docker compose up -d --build`.
+3. Otwórz frontend na `http://IP_SERWERA:3000`.
+
 ## 🚀 Instalacja (jednorazowo)
 
 1. **Wymagania:**

@@ -1,0 +1,36 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: toolboxpro-backend
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      DATABASE_URL: sqlite:////data/toolbox.db
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.10:3000
+    volumes:
+      - ./backend/temp_processing:/app/backend/temp_processing
+      - toolboxpro-data:/data
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: toolboxpro-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://192.168.1.10:8000
+      NEXT_PUBLIC_APP_NAME: ToolBox Pro
+      NEXT_PUBLIC_APP_VERSION: 2.0.0
+      NEXT_PUBLIC_ENABLE_ANALYTICS: "false"
+      NEXT_PUBLIC_ENABLE_PWA: "true"
+    ports:
+      - "3000:3000"
+
+volumes:
+  toolboxpro-data:
