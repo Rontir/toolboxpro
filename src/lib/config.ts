@@ -4,15 +4,11 @@
  */
 
 function resolveApiBaseUrl(): string {
-    if (process.env.NEXT_PUBLIC_API_URL !== undefined) {
-        return process.env.NEXT_PUBLIC_API_URL;
-    }
-
     if (process.env.NODE_ENV === 'development') {
-        return 'http://127.0.0.1:8000';
+        return process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
     }
 
-    return 'https://toolboxpro-api.onrender.com';
+    return '';
 }
 
 export const config = {

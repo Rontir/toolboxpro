@@ -24,7 +24,7 @@ services:
         NEXT_PUBLIC_APP_NAME: ToolBox Pro
         NEXT_PUBLIC_APP_VERSION: 2.0.0
         NEXT_PUBLIC_ENABLE_ANALYTICS: "false"
-        NEXT_PUBLIC_ENABLE_PWA: "true"
+        NEXT_PUBLIC_ENABLE_PWA: "false"
     container_name: toolboxpro-frontend
     restart: unless-stopped
     depends_on:
@@ -35,7 +35,7 @@ services:
       NEXT_PUBLIC_APP_NAME: ToolBox Pro
       NEXT_PUBLIC_APP_VERSION: 2.0.0
       NEXT_PUBLIC_ENABLE_ANALYTICS: "false"
-      NEXT_PUBLIC_ENABLE_PWA: "true"
+      NEXT_PUBLIC_ENABLE_PWA: "false"
     ports:
       - "3000:3000"
 

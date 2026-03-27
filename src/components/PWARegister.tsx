@@ -4,6 +4,10 @@ import { useEffect } from 'react';
 
 export default function PWARegister() {
     useEffect(() => {
+        if (process.env.NEXT_PUBLIC_ENABLE_PWA !== 'true') {
+            return;
+        }
+
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker
                 .register('/sw.js')
