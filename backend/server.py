@@ -8,6 +8,7 @@ import os
 import io
 import zipfile
 import uuid
+import logging
 from datetime import datetime
 import shutil
 import json
@@ -128,6 +129,35 @@ async def reset_account(email: str, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "success", "message": f"User {email} deleted. You can now register again."}
 
+
+# ==================== AUTH HELPERS ====================
+
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """Get current user from JWT token."""
+    if not credentials:
+        return None
+    token_data = verify_token(credentials.credentials)
+    if not token_data or not token_data.user_id:
+        return None
+    return db.query(User).filter(User.id == token_data.user_id).first()
+
+
+def require_user(user: Optional[User] = Depends(get_current_user)) -> User:
+    """Require authenticated user."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def require_admin(user: User = Depends(require_user)) -> User:
+    """Require admin or owner role."""
+    if user.role not in [UserRole.ADMIN, UserRole.OWNER]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
 # ==================== EMPIK TOOLS ENDPOINTS ====================
 
 class PriceMonitorRequest(BaseModel):
@@ -247,30 +277,6 @@ async def get_activity_logs(
     }
 
 # ==================== AUTHENTICATION ENDPOINTS ====================
-
-def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: Session = Depends(get_db)
-) -> Optional[User]:
-    """Get current user from JWT token."""
-    if not credentials:
-        return None
-    token_data = verify_token(credentials.credentials)
-    if not token_data or not token_data.user_id:
-        return None
-    return db.query(User).filter(User.id == token_data.user_id).first()
-
-def require_user(user: Optional[User] = Depends(get_current_user)) -> User:
-    """Require authenticated user."""
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user
-
-def require_admin(user: User = Depends(require_user)) -> User:
-    """Require admin or owner role."""
-    if user.role not in [UserRole.ADMIN, UserRole.OWNER]:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return user
 
 @app.post("/api/auth/register", response_model=Token)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
