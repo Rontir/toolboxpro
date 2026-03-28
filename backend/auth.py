@@ -12,7 +12,16 @@ from jose import JWTError, jwt
 from pydantic import BaseModel
 
 # Configuration
-SECRET_KEY = os.getenv("JWT_SECRET", "dev-secret-change-in-production-please!")
+SECRET_KEY = os.getenv("JWT_SECRET")
+ALLOW_INSECURE_JWT = os.getenv("TOOLBOX_ALLOW_INSECURE_JWT") == "true"
+IS_DEV = os.getenv("NODE_ENV", "").lower() == "development"
+
+if not SECRET_KEY:
+    if IS_DEV or ALLOW_INSECURE_JWT:
+        SECRET_KEY = "dev-secret-change-in-production-please!"
+    else:
+        raise RuntimeError("JWT_SECRET must be set in non-development environments")
+
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/config';
 import { useI18n } from '@/components/I18n';
+import { getAccessToken } from '@/lib/authStorage';
 
 interface ProfileModalProps {
     isOpen: boolean;
@@ -22,8 +23,6 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
-    const getToken = () => localStorage.getItem('toolboxpro_access_token');
-
     const updateProfile = async () => {
         setIsLoading(true);
         setError('');
@@ -32,7 +31,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         try {
             const res = await fetch(apiUrl(`/api/auth/profile?display_name=${encodeURIComponent(displayName)}`), {
                 method: 'PUT',
-                headers: { 'Authorization': `Bearer ${getToken()}` }
+                headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` }
             });
 
             if (res.ok) {
@@ -64,9 +63,16 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         setSuccess('');
 
         try {
-            const res = await fetch(apiUrl(`/api/auth/change-password?current_password=${encodeURIComponent(currentPassword)}&new_password=${encodeURIComponent(newPassword)}`), {
+            const res = await fetch(apiUrl('/api/auth/change-password'), {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${getToken()}` }
+                headers: {
+                    'Authorization': `Bearer ${getAccessToken() || ''}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    current_password: currentPassword,
+                    new_password: newPassword,
+                })
             });
 
             if (res.ok) {

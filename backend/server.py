@@ -117,19 +117,6 @@ async def health_check():
         "auth_available": AUTH_AVAILABLE
     })
 
-# ==================== DEBUG ENDPOINTS ====================
-@app.get("/api/debug/reset-account")
-async def reset_account(email: str, db: Session = Depends(get_db)):
-    """Temporary endpoint to reset a user account."""
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        return {"status": "error", "message": "User not found"}
-    
-    db.delete(user)
-    db.commit()
-    return {"status": "success", "message": f"User {email} deleted. You can now register again."}
-
-
 # ==================== AUTH HELPERS ====================
 
 def get_current_user(
@@ -157,6 +144,45 @@ def require_admin(user: User = Depends(require_user)) -> User:
     if user.role not in [UserRole.ADMIN, UserRole.OWNER]:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+def is_desktop_mode_enabled() -> bool:
+    return os.getenv("TOOLBOX_ENABLE_DESKTOP_ENDPOINTS", "").lower() == "true"
+
+
+def ensure_desktop_mode(request: Request) -> None:
+    if not is_desktop_mode_enabled():
+        raise HTTPException(status_code=404, detail="Desktop-only endpoint is disabled")
+
+    client_host = request.client.host if request.client else ""
+    if client_host not in {"127.0.0.1", "::1", "localhost"}:
+        raise HTTPException(status_code=403, detail="Desktop-only endpoint is limited to localhost")
+
+
+def get_allowed_local_paths() -> List[str]:
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    return [
+        os.path.join(backend_dir, "temp_processing"),
+        os.path.join(backend_dir, "downloads"),
+        os.path.join(os.getcwd(), "backend", "temp_processing"),
+        os.path.join(os.getcwd(), "backend", "downloads"),
+    ]
+
+
+def ensure_safe_local_file_path(path: str) -> str:
+    if not path:
+        raise HTTPException(status_code=400, detail="Path is required")
+
+    normalized = os.path.realpath(path)
+    allowed_roots = [os.path.realpath(root) for root in get_allowed_local_paths()]
+
+    if not os.path.isfile(normalized):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if not any(normalized.startswith(f"{root}{os.sep}") or normalized == root for root in allowed_roots):
+        raise HTTPException(status_code=403, detail="Access to this path is not allowed")
+
+    return normalized
 
 # ==================== EMPIK TOOLS ENDPOINTS ====================
 
@@ -212,11 +238,18 @@ async def validate_image(file: UploadFile = File(...), user: User = Depends(requ
 
 # ==================== ACTIVITY LOGGING ENDPOINTS ====================
 
-from models import ActivityLog
-
 class LogActivityRequest(BaseModel):
     action: str  # tool_use, page_view, etc.
     details: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str
 
 @app.post("/api/log-activity")
 async def log_activity(
@@ -419,8 +452,7 @@ def log_activity(db: Session, user_id: int, action: str, details: str = None, re
 
 @app.post("/api/auth/change-password")
 async def change_password(
-    current_password: str,
-    new_password: str,
+    payload: ChangePasswordRequest,
     request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -429,13 +461,13 @@ async def change_password(
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
-    if not verify_password(current_password, user.password_hash):
+    if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     
-    if len(new_password) < 8:
+    if len(payload.new_password) < 8:
         raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
     
-    user.password_hash = hash_password(new_password)
+    user.password_hash = hash_password(payload.new_password)
     db.commit()
     
     log_activity(db, user.id, "password_change", "User changed own password", request)
@@ -718,7 +750,7 @@ async def remove_user_from_group(
 @app.post("/api/admin/reset-password/{user_id}")
 async def admin_reset_password(
     user_id: int,
-    new_password: str,
+    payload: AdminResetPasswordRequest,
     request: Request,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db)
@@ -728,43 +760,15 @@ async def admin_reset_password(
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if len(new_password) < 8:
+    if len(payload.new_password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     
-    target_user.password_hash = hash_password(new_password)
+    target_user.password_hash = hash_password(payload.new_password)
     db.commit()
     
     log_activity(db, admin.id, "admin_password_reset", f"Reset password for user {target_user.email}", request)
     
     return {"message": f"Password reset for {target_user.email}"}
-
-@app.get("/api/admin/activity-logs")
-async def get_activity_logs(
-    limit: int = 100,
-    user_id: int = None,
-    action: str = None,
-    admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    """Get activity logs (admin only)."""
-    query = db.query(ActivityLog).order_by(ActivityLog.created_at.desc())
-    
-    if user_id:
-        query = query.filter(ActivityLog.user_id == user_id)
-    if action:
-        query = query.filter(ActivityLog.action == action)
-    
-    logs = query.limit(limit).all()
-    
-    return [{
-        "id": log.id,
-        "user_id": log.user_id,
-        "user_email": log.user.email if log.user else None,
-        "action": log.action,
-        "details": log.details,
-        "ip_address": log.ip_address,
-        "created_at": log.created_at.isoformat() if log.created_at else None
-    } for log in logs]
 
 @app.get("/api/admin/dashboard-stats")
 async def get_dashboard_stats(
@@ -1126,11 +1130,9 @@ async def process_image(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/browse-folder")
-async def browse_folder():
+async def browse_folder(request: Request):
     try:
-        # Check if running on Render (or any headless env)
-        if os.environ.get("RENDER") or os.environ.get("CI"):
-            return JSONResponse(status_code=400, content={"error": "Folder browsing not available on server"})
+        ensure_desktop_mode(request)
 
         # Run in executor to avoid blocking main thread
         from backend_processor import SystemUtils
@@ -1141,17 +1143,20 @@ async def browse_folder():
         
         return JSONResponse(status_code=200, content={"path": folder_path})
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.post("/api/open-file")
 async def open_file_in_explorer(request: Request):
     """Open file location in Windows Explorer"""
     try:
+        ensure_desktop_mode(request)
         data = await request.json()
-        file_path = data.get('file_path', '')
-        
-        if not file_path or not os.path.exists(file_path):
-            return JSONResponse(status_code=404, content={"error": "File not found"})
+        file_path = ensure_safe_local_file_path(data.get('file_path', ''))
+
+        if os.name != "nt":
+            raise HTTPException(status_code=400, detail="Open file is only supported on Windows desktop")
         
         # Open file location in explorer, selecting the file
         import subprocess
@@ -1159,17 +1164,21 @@ async def open_file_in_explorer(request: Request):
         
         return JSONResponse(status_code=200, content={"success": True})
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/api/download-file")
-async def download_local_file(path: str):
+async def download_local_file(path: str, request: Request):
     """Download a local file by path"""
     try:
-        if not path or not os.path.exists(path):
-            raise HTTPException(status_code=404, detail="File not found")
+        ensure_desktop_mode(request)
+        safe_path = ensure_safe_local_file_path(path)
         
-        return FileResponse(path, filename=os.path.basename(path), media_type='application/octet-stream')
+        return FileResponse(safe_path, filename=os.path.basename(safe_path), media_type='application/octet-stream')
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

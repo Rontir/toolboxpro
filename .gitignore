@@ -47,6 +47,12 @@ backend/temp_*.zip
 backend/*.zip
 backend/downloads/
 backend/output/
+backend/temp_processing/
+backend/*.db
+backend/*.log
+backend/admin_log.txt
+backend/output.txt
+backend/result.log
 
 # Python
 __pycache__/

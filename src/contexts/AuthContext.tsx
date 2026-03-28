@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { apiUrl } from '@/lib/config';
+import { saveAuthTokens, clearAuthTokens, getAccessToken, getRefreshToken } from '@/lib/authStorage';
 
 // Types
 interface User {
@@ -35,29 +36,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Restricted tools that require special permissions
 const RESTRICTED_TOOLS = ['piko_empiko', 'structure_matcher'];
 
-// Storage keys
-const ACCESS_TOKEN_KEY = 'toolboxpro_access_token';
-const REFRESH_TOKEN_KEY = 'toolboxpro_refresh_token';
-
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-
-    // Save tokens to localStorage
-    const saveTokens = (tokens: AuthTokens) => {
-        localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
-        localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
-    };
-
-    // Clear tokens
-    const clearTokens = () => {
-        localStorage.removeItem(ACCESS_TOKEN_KEY);
-        localStorage.removeItem(REFRESH_TOKEN_KEY);
-    };
-
-    // Get access token
-    const getAccessToken = () => localStorage.getItem(ACCESS_TOKEN_KEY);
-    const getRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY);
 
     // Fetch current user
     const fetchUser = useCallback(async () => {
@@ -80,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 // Token expired, try refresh
                 await refreshTokens();
             } else {
-                clearTokens();
+                clearAuthTokens();
                 setUser(null);
             }
         } catch (error) {
@@ -95,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const refreshTokens = async () => {
         const refreshToken = getRefreshToken();
         if (!refreshToken) {
-            clearTokens();
+            clearAuthTokens();
             setUser(null);
             return;
         }
@@ -108,15 +89,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             if (res.ok) {
                 const tokens: AuthTokens = await res.json();
-                saveTokens(tokens);
+                saveAuthTokens(tokens);
                 await fetchUser();
             } else {
-                clearTokens();
+                clearAuthTokens();
                 setUser(null);
             }
         } catch (error) {
             console.error('Failed to refresh tokens:', error);
-            clearTokens();
+            clearAuthTokens();
             setUser(null);
         }
     };
@@ -135,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const tokens: AuthTokens = await res.json();
-        saveTokens(tokens);
+        saveAuthTokens(tokens);
         await fetchUser();
     };
 
@@ -153,13 +134,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const tokens: AuthTokens = await res.json();
-        saveTokens(tokens);
+        saveAuthTokens(tokens);
         await fetchUser();
     };
 
     // Logout
     const logout = () => {
-        clearTokens();
+        clearAuthTokens();
         setUser(null);
     };
 

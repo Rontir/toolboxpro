@@ -94,6 +94,8 @@ export default function ProductCropper() {
 
     // ZIP export option
     const [packAsZip, setPackAsZip] = useState(true);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const folderInputRef = useRef<HTMLInputElement>(null);
 
     // Drag state for crop box
     const [dragCorner, setDragCorner] = useState<'tl' | 'tr' | 'bl' | 'br' | 'move' | null>(null);
@@ -732,6 +734,14 @@ export default function ProductCropper() {
         setInputSource(null);
     };
 
+    const openFilePicker = useCallback(() => {
+        fileInputRef.current?.click();
+    }, []);
+
+    const openFolderPicker = useCallback(() => {
+        folderInputRef.current?.click();
+    }, []);
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Loading/Processing Overlay */}
@@ -759,17 +769,11 @@ export default function ProductCropper() {
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
-                onClick={() => {
-                    if (uploadMode === 'files') {
-                        document.getElementById('crop-input')?.click();
-                    } else {
-                        document.getElementById('crop-folder-input')?.click();
-                    }
-                }}
             >
                 <input
                     type="file"
                     id="crop-input"
+                    ref={fileInputRef}
                     accept="image/*,.zip"
                     multiple
                     className="hidden"
@@ -778,19 +782,20 @@ export default function ProductCropper() {
                 <input
                     type="file"
                     id="crop-folder-input"
+                    ref={folderInputRef}
                     // @ts-expect-error webkitdirectory not in types
                     webkitdirectory=""
                     multiple
                     className="hidden"
                     onChange={handleFolderSelect}
                 />
-                <span className="icon">✏️</span>
-                <p className="title">
+                <span className="icon" style={{ pointerEvents: 'none' }}>✏️</span>
+                <p className="title" style={{ pointerEvents: 'none' }}>
                     {files.length > 0 ? `${files.length} zdjęć produktów` : 'Przeciągnij zdjęcia lub folder'}
                 </p>
-                <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem' }}>lub wrzuć archiwum ZIP ze zdjęciami</p>
+                <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem', pointerEvents: 'none' }}>uzyj przyciskow ponizej albo wrzuc archiwum ZIP ze zdjeciami</p>
                 {inputSource && (
-                    <p className="subtitle" style={{ marginBottom: '1rem', color: 'var(--accent)' }}>
+                    <p className="subtitle" style={{ marginBottom: '1rem', color: 'var(--accent)', pointerEvents: 'none' }}>
                         Wejście: {inputSource === 'folder' ? 'folder' : inputSource === 'zip' ? 'ZIP' : inputSource === 'mixed' ? 'pliki + ZIP' : 'pliki'} | Wyjście: {packAsZip ? 'ZIP' : 'pojedyncze pliki'}
                     </p>
                 )}
@@ -803,7 +808,7 @@ export default function ProductCropper() {
                             e.preventDefault();
                             e.stopPropagation();
                             setUploadMode('files');
-                            document.getElementById('crop-input')?.click();
+                            openFilePicker();
                         }}
                     >
                         🖼️ Pliki
@@ -815,7 +820,7 @@ export default function ProductCropper() {
                             e.preventDefault();
                             e.stopPropagation();
                             setUploadMode('folder');
-                            document.getElementById('crop-folder-input')?.click();
+                            openFolderPicker();
                         }}
                     >
                         📁 Folder

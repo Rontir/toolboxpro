@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 import { useHistory } from '@/components/History';
 import { useDroppedFile } from '@/components/DroppedFileContext';
@@ -39,6 +39,8 @@ export default function ImageConverter() {
 
     // ZIP export option
     const [packAsZip, setPackAsZip] = useState(true);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const folderInputRef = useRef<HTMLInputElement>(null);
 
     const { addToHistory } = useHistory();
     const { consumeDroppedFile } = useDroppedFile();
@@ -463,6 +465,14 @@ export default function ImageConverter() {
     const totalOriginal = files.reduce((a, f) => a + f.file.size, 0);
     const totalConverted = converted.reduce((a, c) => a + c.newSize, 0);
 
+    const openFilePicker = useCallback(() => {
+        fileInputRef.current?.click();
+    }, []);
+
+    const openFolderPicker = useCallback(() => {
+        folderInputRef.current?.click();
+    }, []);
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Loading/Processing Overlay */}
@@ -490,17 +500,11 @@ export default function ImageConverter() {
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
-                onClick={() => {
-                    if (uploadMode === 'files') {
-                        document.getElementById('img-input')?.click();
-                    } else {
-                        document.getElementById('folder-input')?.click();
-                    }
-                }}
             >
                 <input
                     type="file"
                     id="img-input"
+                    ref={fileInputRef}
                     accept="image/*,.zip"
                     multiple
                     className="hidden"
@@ -509,19 +513,20 @@ export default function ImageConverter() {
                 <input
                     type="file"
                     id="folder-input"
+                    ref={folderInputRef}
                     // @ts-expect-error webkitdirectory is not in types
                     webkitdirectory=""
                     multiple
                     className="hidden"
                     onChange={handleFolderSelect}
                 />
-                <span className="icon">🖼️</span>
-                <p className="title">
+                <span className="icon" style={{ pointerEvents: 'none' }}>🖼️</span>
+                <p className="title" style={{ pointerEvents: 'none' }}>
                     {files.length > 0 ? `${files.length} obrazów wybranych` : 'Przeciągnij obrazy lub folder tutaj'}
                 </p>
-                <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem' }}>lub wybierz poniżej albo wrzuć ZIP</p>
+                <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem', pointerEvents: 'none' }}>uzyj przyciskow ponizej albo wrzuc ZIP</p>
                 {inputSource && (
-                    <p className="subtitle" style={{ marginBottom: '1rem', color: 'var(--accent)' }}>
+                    <p className="subtitle" style={{ marginBottom: '1rem', color: 'var(--accent)', pointerEvents: 'none' }}>
                         Wejście: {inputSource === 'folder' ? 'folder' : inputSource === 'zip' ? 'ZIP' : inputSource === 'mixed' ? 'pliki + ZIP' : 'pliki'} | Wyjście: {packAsZip ? 'ZIP' : 'pojedyncze pliki'}
                     </p>
                 )}
@@ -533,7 +538,7 @@ export default function ImageConverter() {
                             e.preventDefault();
                             e.stopPropagation();
                             setUploadMode('files');
-                            document.getElementById('img-input')?.click();
+                            openFilePicker();
                         }}
                         className={`btn ${uploadMode === 'files' ? 'btn-primary' : 'btn-secondary'}`}
                     >
@@ -545,7 +550,7 @@ export default function ImageConverter() {
                             e.preventDefault();
                             e.stopPropagation();
                             setUploadMode('folder');
-                            document.getElementById('folder-input')?.click();
+                            openFolderPicker();
                         }}
                         className={`btn ${uploadMode === 'folder' ? 'btn-primary' : 'btn-secondary'}`}
                     >

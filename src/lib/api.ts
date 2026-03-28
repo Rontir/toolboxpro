@@ -84,7 +84,7 @@ export async function parseExcelPreview(file: File): Promise<{
 }
 
 export async function browseFolder(): Promise<string | null> {
-    const res = await fetch(`${API_BASE}/api/browse-folder`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/api/browse-folder`);
     if (!res.ok) return null;
     const data = await res.json();
     return data.path || null;

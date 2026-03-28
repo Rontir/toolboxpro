@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiUrl } from '@/lib/config';
 import { useI18n } from '@/components/I18n';
+import { getAccessToken } from '@/lib/authStorage';
 
 interface GroupInfo { id: number; name: string; color: string; }
 interface User {
@@ -55,7 +56,6 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
     const [resetUserEmail, setResetUserEmail] = useState('');
     const [newPassword, setNewPassword] = useState('');
 
-    const getToken = () => localStorage.getItem('toolboxpro_access_token');
     const showSuccess = (msg: string) => { setSuccessMessage(msg); setTimeout(() => setSuccessMessage(''), 3000); };
 
     const fetchAll = async () => {
@@ -63,10 +63,10 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
         setIsLoading(true);
         try {
             const [usersRes, groupsRes, logsRes, statsRes] = await Promise.all([
-                fetch(apiUrl('/api/admin/users'), { headers: { 'Authorization': `Bearer ${getToken()}` } }),
-                fetch(apiUrl('/api/admin/groups'), { headers: { 'Authorization': `Bearer ${getToken()}` } }),
-                fetch(apiUrl('/api/admin/activity-logs?limit=100'), { headers: { 'Authorization': `Bearer ${getToken()}` } }),
-                fetch(apiUrl('/api/admin/dashboard-stats'), { headers: { 'Authorization': `Bearer ${getToken()}` } })
+                fetch(apiUrl('/api/admin/users'), { headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } }),
+                fetch(apiUrl('/api/admin/groups'), { headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } }),
+                fetch(apiUrl('/api/admin/activity-logs?limit=100'), { headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } }),
+                fetch(apiUrl('/api/admin/dashboard-stats'), { headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } })
             ]);
             if (usersRes.ok) setUsers(await usersRes.json());
             if (groupsRes.ok) setGroups(await groupsRes.json());
@@ -85,7 +85,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
     // User actions
     const setRole = async (userId: number, role: string) => {
         await fetch(apiUrl(`/api/admin/set-role?user_id=${userId}&role=${role}`), {
-            method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }
+            method: 'POST', headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` }
         });
         showSuccess(`${t('common.success')}: ${role}`);
         fetchAll();
@@ -93,7 +93,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
 
     const addUserToGroup = async (userId: number, groupId: number) => {
         await fetch(apiUrl(`/api/admin/groups/${groupId}/add-user/${userId}`), {
-            method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }
+            method: 'POST', headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` }
         });
         showSuccess(t('common.success'));
         fetchAll();
@@ -101,7 +101,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
 
     const removeUserFromGroup = async (userId: number, groupId: number) => {
         await fetch(apiUrl(`/api/admin/groups/${groupId}/remove-user/${userId}`), {
-            method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` }
+            method: 'DELETE', headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` }
         });
         showSuccess(t('common.success'));
         fetchAll();
@@ -112,8 +112,13 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
             setError(t('auth.passwordMinLength'));
             return;
         }
-        await fetch(apiUrl(`/api/admin/reset-password/${resetUserId}?new_password=${encodeURIComponent(newPassword)}`), {
-            method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }
+        await fetch(apiUrl(`/api/admin/reset-password/${resetUserId}`), {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${getAccessToken() || ''}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ new_password: newPassword }),
         });
         showSuccess(t('admin.resetPasswordSuccess'));
         setShowResetModal(false);
@@ -142,21 +147,21 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
         if (!groupName.trim()) { setError(t('common.error')); return; }
         if (editingGroup) {
             await fetch(apiUrl(`/api/admin/groups/${editingGroup.id}?name=${encodeURIComponent(groupName)}&color=${encodeURIComponent(groupColor)}&description=${encodeURIComponent(groupDescription)}`), {
-                method: 'PUT', headers: { 'Authorization': `Bearer ${getToken()}` }
+                method: 'PUT', headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` }
             });
             await fetch(apiUrl(`/api/admin/groups/${editingGroup.id}/tools`), {
-                method: 'PUT', headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                method: 'PUT', headers: { 'Authorization': `Bearer ${getAccessToken() || ''}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(groupTools)
             });
             showSuccess(t('common.success'));
         } else {
             const res = await fetch(apiUrl(`/api/admin/groups?name=${encodeURIComponent(groupName)}&color=${encodeURIComponent(groupColor)}&description=${encodeURIComponent(groupDescription)}`), {
-                method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }
+                method: 'POST', headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` }
             });
             if (res.ok && groupTools.length > 0) {
                 const data = await res.json();
                 await fetch(apiUrl(`/api/admin/groups/${data.id}/tools`), {
-                    method: 'PUT', headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+                    method: 'PUT', headers: { 'Authorization': `Bearer ${getAccessToken() || ''}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify(groupTools)
                 });
             }
@@ -168,7 +173,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
 
     const deleteGroup = async (groupId: number) => {
         if (!confirm(t('admin.confirmDeleteGroup'))) return;
-        await fetch(apiUrl(`/api/admin/groups/${groupId}`), { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } });
+        await fetch(apiUrl(`/api/admin/groups/${groupId}`), { method: 'DELETE', headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } });
         showSuccess(t('common.success'));
         fetchAll();
     };

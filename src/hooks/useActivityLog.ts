@@ -1,6 +1,7 @@
 'use client';
 
 import { apiUrl } from '@/lib/config';
+import { getAccessToken } from '@/lib/authStorage';
 
 /**
  * Hook for logging user activity.
@@ -13,7 +14,7 @@ export function useActivityLog() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('toolboxpro_access_token') || ''}`
+                    'Authorization': `Bearer ${getAccessToken() || ''}`
                 },
                 body: JSON.stringify({ action, details })
             });
@@ -34,7 +35,7 @@ export function logToolUse(toolId: string) {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('toolboxpro_access_token') || ''}`
+            'Authorization': `Bearer ${getAccessToken() || ''}`
         },
         body: JSON.stringify({ action: 'tool_use', details: toolId })
     }).catch(() => { });
