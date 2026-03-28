@@ -31,7 +31,7 @@ except ImportError as e:
 # Auth imports - wrapped in try-except for debugging
 AUTH_AVAILABLE = False
 try:
-    from database import get_db, init_db
+    from database import get_db, init_db, DATABASE_URL
     from models import User, ToolPermission, UserRole, RESTRICTED_TOOLS, Group, ActivityLog
     from auth import (
         hash_password, verify_password, create_tokens, verify_token,
@@ -49,6 +49,7 @@ except Exception as e:
     class Token: pass
     class GrantToolRequest: pass
     RESTRICTED_TOOLS = []
+    DATABASE_URL = ""
 
 app = FastAPI(title="ToolBox Pro API")
 
@@ -335,6 +336,10 @@ def get_system_status_snapshot() -> dict:
         "cleanup": {
             "min_free_disk_mb": MIN_FREE_DISK_MB,
             "max_disk_usage_percent": MAX_DISK_USAGE_PERCENT,
+        },
+        "database": {
+            "url": DATABASE_URL,
+            "engine": "sqlite" if DATABASE_URL.startswith("sqlite") else "postgresql" if DATABASE_URL.startswith("postgresql") else "unknown",
         },
         "last_cleanup": last_cleanup_status,
     }

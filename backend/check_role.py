@@ -3,12 +3,8 @@ import sys
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from models import User, UserRole, Base
+from database import DATABASE_URL
 
-import tempfile
-
-# Database setup - Check TEMP dir first as that's the default in database.py
-db_path = os.path.join(tempfile.gettempdir(), "toolboxpro.db")
-DATABASE_URL = f"sqlite:///{db_path}"
 print(f"Checking database at: {DATABASE_URL}")
 
 engine = create_engine(DATABASE_URL)

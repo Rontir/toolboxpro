@@ -49,6 +49,10 @@ interface SystemStatus {
         min_free_disk_mb: number;
         max_disk_usage_percent: number;
     };
+    database: {
+        url: string;
+        engine: string;
+    };
     last_cleanup: {
         last_run_at: string | null;
         removed_result_zips: number;
@@ -362,6 +366,12 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                                 <div>
                                                     <div style={{ color: 'var(--text-muted)' }}>Śledzone joby</div>
                                                     <div>{systemStatus.jobs.tracked_total}</div>
+                                                </div>
+                                                <div style={{ gridColumn: '1 / -1' }}>
+                                                    <div style={{ color: 'var(--text-muted)' }}>Baza danych</div>
+                                                    <div style={{ wordBreak: 'break-all' }}>
+                                                        {systemStatus.database.engine}: {systemStatus.database.url || 'brak'}
+                                                    </div>
                                                 </div>
                                             </div>
                                             {systemStatus.last_cleanup.last_run_at && (

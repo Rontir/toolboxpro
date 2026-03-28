@@ -7,13 +7,7 @@ from models import User, UserRole, Base
 # Add current directory to path so we can import modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Database setup (same as database.py but standalone)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "toolbox.db")
-DATABASE_URL = f"sqlite:///{DB_PATH}"
-
-# Set env var so database.py uses the same path
-os.environ["DATABASE_URL"] = DATABASE_URL
+from database import DATABASE_URL
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

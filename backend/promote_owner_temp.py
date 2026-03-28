@@ -1,14 +1,11 @@
 import os
 import sys
-import tempfile
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from models import User, UserRole, Base
+from database import DATABASE_URL
 
-# Database setup - TEMP DIR
-db_path = os.path.join(tempfile.gettempdir(), "toolboxpro.db")
-DATABASE_URL = f"sqlite:///{db_path}"
-print(f"Targeting TEMP database at: {DATABASE_URL}")
+print(f"Targeting database at: {DATABASE_URL}")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
