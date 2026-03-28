@@ -71,6 +71,7 @@ security = HTTPBearer(auto_error=False)
 
 # Job Store
 jobs: Dict[str, dict] = {}
+jobs_lock = threading.RLock()
 
 
 def get_int_env(name: str, default: int) -> int:
@@ -90,10 +91,11 @@ MIN_FREE_DISK_MB = get_int_env("MIN_FREE_DISK_MB", 1024)
 MAX_DISK_USAGE_PERCENT = get_int_env("MAX_DISK_USAGE_PERCENT", 90)
 
 def update_progress(job_id, current, total):
-    if job_id in jobs:
-        jobs[job_id]['progress'] = int((current / total) * 100) if total > 0 else 0
-        jobs[job_id]['status'] = 'processing'
-        jobs[job_id]['last_accessed_at'] = datetime.now().isoformat()
+    with jobs_lock:
+        if job_id in jobs:
+            jobs[job_id]['progress'] = int((current / total) * 100) if total > 0 else 0
+            jobs[job_id]['status'] = 'processing'
+            jobs[job_id]['last_accessed_at'] = datetime.now().isoformat()
 
 def _delete_temp_path(path: str) -> None:
     try:
@@ -132,7 +134,10 @@ def cleanup_finished_jobs(force_all_finished: bool = False) -> int:
     removable_statuses = {'completed', 'error'}
     candidates = []
 
-    for job_id, job in jobs.items():
+    with jobs_lock:
+        job_items = list(jobs.items())
+
+    for job_id, job in job_items:
         if job.get('status') not in removable_statuses:
             continue
 
@@ -171,8 +176,20 @@ def cleanup_stale_temp_files() -> None:
     cutoff_ts = now_ts - TEMP_FILE_TTL_SECONDS
     temp_root = tempfile.gettempdir()
 
+    protected_paths = set()
+    with jobs_lock:
+        for job in jobs.values():
+            if job.get('status') in {'pending', 'processing'}:
+                result = job.get('result') or {}
+                file_path = result.get('file_path')
+                if file_path:
+                    protected_paths.add(os.path.realpath(file_path))
+
     for path in glob.glob(os.path.join(temp_root, "piko_result_*.zip")):
         try:
+            real_path = os.path.realpath(path)
+            if real_path in protected_paths:
+                continue
             if os.path.getmtime(path) < cutoff_ts:
                 _delete_temp_path(path)
         except FileNotFoundError:
@@ -190,16 +207,33 @@ def cleanup_stale_temp_files() -> None:
     cleanup_finished_jobs(force_all_finished=False)
 
     if is_disk_pressure_high():
+        zip_candidates = []
+        for path in glob.glob(os.path.join(temp_root, "piko_result_*.zip")):
+            try:
+                real_path = os.path.realpath(path)
+                if real_path in protected_paths:
+                    continue
+                zip_candidates.append((os.path.getmtime(path), path))
+            except FileNotFoundError:
+                continue
+
+        for _mtime, path in sorted(zip_candidates):
+            _delete_temp_path(path)
+            if not is_disk_pressure_high():
+                break
+
         cleanup_finished_jobs(force_all_finished=True)
 
 
 def touch_job(job_id: str) -> None:
-    if job_id in jobs:
-        jobs[job_id]['last_accessed_at'] = datetime.now().isoformat()
+    with jobs_lock:
+        if job_id in jobs:
+            jobs[job_id]['last_accessed_at'] = datetime.now().isoformat()
 
 
 def cleanup_job(job_id: str) -> None:
-    job = jobs.pop(job_id, None)
+    with jobs_lock:
+        job = jobs.pop(job_id, None)
     if not job:
         return
 
@@ -1079,14 +1113,15 @@ async def piko_empiko(
         cleanup_stale_temp_files()
         content = await file.read()
         job_id = str(uuid.uuid4())
-        jobs[job_id] = {
-            'status': 'pending',
-            'progress': 0,
-            'result': None,
-            'error': None,
-            'created_at': datetime.now().isoformat(),
-            'last_accessed_at': datetime.now().isoformat(),
-        }
+        with jobs_lock:
+            jobs[job_id] = {
+                'status': 'pending',
+                'progress': 0,
+                'result': None,
+                'error': None,
+                'created_at': datetime.now().isoformat(),
+                'last_accessed_at': datetime.now().isoformat(),
+            }
         
         # Parse boolean options
         opts = {
@@ -1124,16 +1159,22 @@ async def piko_empiko(
                 logging.info(f"[{jid}] process_safe completed: {output_path}")
                 filename = os.path.basename(output_path)
                 
-                jobs[jid]['status'] = 'completed'
-                jobs[jid]['result'] = {'file_path': output_path, 'filename': filename}
-                jobs[jid]['progress'] = 100
-                jobs[jid]['completed_at'] = datetime.now().isoformat()
+                with jobs_lock:
+                    if jid not in jobs:
+                        _delete_temp_path(output_path)
+                        return
+                    jobs[jid]['status'] = 'completed'
+                    jobs[jid]['result'] = {'file_path': output_path, 'filename': filename}
+                    jobs[jid]['progress'] = 100
+                    jobs[jid]['completed_at'] = datetime.now().isoformat()
                 schedule_job_cleanup(jid)
             except Exception as e:
                 logging.error(f"[{jid}] Error in process_task: {e}")
                 logging.error(traceback.format_exc())
-                jobs[jid]['status'] = 'error'
-                jobs[jid]['error'] = str(e)
+                with jobs_lock:
+                    if jid in jobs:
+                        jobs[jid]['status'] = 'error'
+                        jobs[jid]['error'] = str(e)
                 schedule_job_cleanup(jid)
 
         background_tasks.add_task(process_task, job_id, content, col_index, col_main, col_extra, opts)
@@ -1155,14 +1196,15 @@ async def piko_local(
         excel_content = await file.read() if file else None
         opts = json.loads(options)
         job_id = str(uuid.uuid4())
-        jobs[job_id] = {
-            'status': 'pending',
-            'progress': 0,
-            'result': None,
-            'error': None,
-            'created_at': datetime.now().isoformat(),
-            'last_accessed_at': datetime.now().isoformat(),
-        }
+        with jobs_lock:
+            jobs[job_id] = {
+                'status': 'pending',
+                'progress': 0,
+                'result': None,
+                'error': None,
+                'created_at': datetime.now().isoformat(),
+                'last_accessed_at': datetime.now().isoformat(),
+            }
         
         def process_task(jid, mode, folder, content, opts):
             try:
@@ -1172,14 +1214,19 @@ async def piko_local(
                     progress_callback=lambda pct: update_progress(jid, pct, 100)
                 )
                 
-                jobs[jid]['status'] = 'completed'
-                jobs[jid]['result'] = result
-                jobs[jid]['progress'] = 100
-                jobs[jid]['completed_at'] = datetime.now().isoformat()
+                with jobs_lock:
+                    if jid not in jobs:
+                        return
+                    jobs[jid]['status'] = 'completed'
+                    jobs[jid]['result'] = result
+                    jobs[jid]['progress'] = 100
+                    jobs[jid]['completed_at'] = datetime.now().isoformat()
                 schedule_job_cleanup(jid)
             except Exception as e:
-                jobs[jid]['status'] = 'error'
-                jobs[jid]['error'] = str(e)
+                with jobs_lock:
+                    if jid in jobs:
+                        jobs[jid]['status'] = 'error'
+                        jobs[jid]['error'] = str(e)
                 schedule_job_cleanup(jid)
 
         background_tasks.add_task(process_task, job_id, mode, folder_path, excel_content, opts)
@@ -1190,17 +1237,20 @@ async def piko_local(
 
 @app.get("/api/progress/{job_id}")
 async def get_progress(job_id: str):
-    if job_id not in jobs:
-        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    with jobs_lock:
+        if job_id not in jobs:
+            return JSONResponse(status_code=404, content={"error": "Job not found"})
     touch_job(job_id)
-    return JSONResponse(status_code=200, content=jobs[job_id])
+    with jobs_lock:
+        job_snapshot = dict(jobs[job_id])
+    return JSONResponse(status_code=200, content=job_snapshot)
 
 @app.get("/api/download/{job_id}")
 async def download_result(job_id: str):
-    if job_id not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
-    
-    job = jobs[job_id]
+    with jobs_lock:
+        if job_id not in jobs:
+            raise HTTPException(status_code=404, detail="Job not found")
+        job = dict(jobs[job_id])
     touch_job(job_id)
     if job['status'] != 'completed':
         raise HTTPException(status_code=400, detail="Job not completed")

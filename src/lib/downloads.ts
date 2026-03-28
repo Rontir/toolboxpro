@@ -22,6 +22,15 @@ interface WindowWithDirectoryPicker extends Window {
     showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandleLike>;
 }
 
+function isPickerCancelError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+        return false;
+    }
+
+    const maybeError = error as { name?: string };
+    return maybeError.name === 'AbortError';
+}
+
 function triggerBrowserDownload(file: DownloadableFile): void {
     const anchor = document.createElement('a');
     anchor.href = file.url;
@@ -60,7 +69,7 @@ async function saveViaDirectoryPicker(
 export async function downloadFiles(
     files: DownloadableFile[],
     setProgress?: (message: string) => void,
-): Promise<'directory' | 'browser'> {
+): Promise<'directory' | 'browser' | 'cancelled'> {
     if (files.length === 0) {
         return 'browser';
     }
@@ -71,6 +80,10 @@ export async function downloadFiles(
             return 'directory';
         }
     } catch (error) {
+        if (isPickerCancelError(error)) {
+            setProgress?.('');
+            return 'cancelled';
+        }
         console.warn('Directory save failed, falling back to browser downloads', error);
     }
 

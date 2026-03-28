@@ -493,6 +493,10 @@ export default function ImageConverter() {
                     setLoadingText,
                 );
 
+                if (mode === 'cancelled') {
+                    return;
+                }
+
                 if (mode === 'browser' && converted.length > 20) {
                     alert('Przeglądarka może ograniczać masowe pobieranie pojedynczych plików. Jeśli chcesz pobrać bardzo dużo obrazów naraz, najlepiej zostawić pakowanie do ZIP albo wybrać folder zapisu, gdy przeglądarka o to poprosi.');
                 }

@@ -179,43 +179,57 @@ export default function PikoEmpiko() {
             const { job_id } = await res.json();
             addLog(`Job: ${job_id}`, 'info');
 
-            const poll = setInterval(async () => {
-                try {
-                    if (document.hidden) {
-                        return;
-                    }
+            let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+            let stopped = false;
 
+            const stopPolling = () => {
+                stopped = true;
+                if (pollTimeout) {
+                    clearTimeout(pollTimeout);
+                    pollTimeout = null;
+                }
+            };
+
+            const poll = async () => {
+                try {
                     const pRes = await fetch(apiUrl(`/api/progress/${job_id}`));
                     const pData = await pRes.json();
 
                     // Handle job not found
                     if (pData.error) {
                         addLog(`Błąd: ${pData.error}`, 'error');
-                        return; // Stay in the polling loop, job might appear
-                    }
+                    } else {
+                        const prog = pData.progress ?? 0;
+                        setProgress(prog);
+                        setStatus(`${prog}%`);
 
-                    const prog = pData.progress ?? 0;
-                    setProgress(prog);
-                    setStatus(`${prog}%`);
-
-                    if (pData.status === 'completed') {
-                        clearInterval(poll);
-                        setIsProcessing(false);
-                        setProgress(100);
-                        setStatus('Zakończono!');
-                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-                        setDownloadFilename(`piko_images_${timestamp}.zip`);
-                        setDownloadUrl(apiUrl(`/api/download/${job_id}`));
-                        addLog('Zakończono!', 'success');
-                        if (soundEnabled) playSound();
-                        showSuccess('Success!');
-                    } else if (pData.status === 'error') {
-                        clearInterval(poll);
-                        setIsProcessing(false);
-                        addLog(`Błąd: ${pData.error}`, 'error');
+                        if (pData.status === 'completed') {
+                            stopPolling();
+                            setIsProcessing(false);
+                            setProgress(100);
+                            setStatus('Zakończono!');
+                            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                            setDownloadFilename(`piko_images_${timestamp}.zip`);
+                            setDownloadUrl(apiUrl(`/api/download/${job_id}`));
+                            addLog('Zakończono!', 'success');
+                            if (soundEnabled) playSound();
+                            showSuccess('Success!');
+                            return;
+                        } else if (pData.status === 'error') {
+                            stopPolling();
+                            setIsProcessing(false);
+                            addLog(`Błąd: ${pData.error}`, 'error');
+                            return;
+                        }
                     }
                 } catch { /* ignore poll errors */ }
-            }, 1000);
+
+                if (!stopped) {
+                    pollTimeout = setTimeout(poll, document.hidden ? 15000 : 1000);
+                }
+            };
+
+            poll();
         } catch (e: unknown) {
             setIsProcessing(false);
             const msg = e instanceof Error ? e.message : String(e);
@@ -253,44 +267,58 @@ export default function PikoEmpiko() {
             const { job_id } = await res.json();
             addLog(`Job: ${job_id}`, 'info');
 
-            const poll = setInterval(async () => {
-                try {
-                    if (document.hidden) {
-                        return;
-                    }
+            let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+            let stopped = false;
 
+            const stopPolling = () => {
+                stopped = true;
+                if (pollTimeout) {
+                    clearTimeout(pollTimeout);
+                    pollTimeout = null;
+                }
+            };
+
+            const poll = async () => {
+                try {
                     const pRes = await fetch(apiUrl(`/api/progress/${job_id}`));
                     const pData = await pRes.json();
 
                     if (pData.error) {
                         addLog(`Błąd: ${pData.error}`, 'error');
-                        return;
-                    }
+                    } else {
+                        const prog = pData.progress ?? 0;
+                        setProgress(prog);
+                        setStatus(`${prog}%`);
 
-                    const prog = pData.progress ?? 0;
-                    setProgress(prog);
-                    setStatus(`${prog}%`);
-
-                    if (pData.status === 'completed') {
-                        clearInterval(poll);
-                        setIsProcessing(false);
-                        setProgress(100);
-                        setStatus('Zakończono!');
-                        setLocalResult(pData.result);
-                        if (pData.result?.file) {
-                            addLog(`📁 Plik: ${pData.result.file}`, 'success');
+                        if (pData.status === 'completed') {
+                            stopPolling();
+                            setIsProcessing(false);
+                            setProgress(100);
+                            setStatus('Zakończono!');
+                            setLocalResult(pData.result);
+                            if (pData.result?.file) {
+                                addLog(`📁 Plik: ${pData.result.file}`, 'success');
+                            }
+                            addLog(`✅ ${pData.result?.message || 'Zakończono!'}`, 'success');
+                            showSuccess(pData.result?.message || 'Gotowe!');
+                            playSound();
+                            return;
+                        } else if (pData.status === 'error') {
+                            stopPolling();
+                            setIsProcessing(false);
+                            setLocalResult({ status: 'error', message: pData.error });
+                            addLog(`❌ ${pData.error}`, 'error');
+                            return;
                         }
-                        addLog(`✅ ${pData.result?.message || 'Zakończono!'}`, 'success');
-                        showSuccess(pData.result?.message || 'Gotowe!');
-                        playSound();
-                    } else if (pData.status === 'error') {
-                        clearInterval(poll);
-                        setIsProcessing(false);
-                        setLocalResult({ status: 'error', message: pData.error });
-                        addLog(`❌ ${pData.error}`, 'error');
                     }
                 } catch { /* ignore */ }
-            }, 1000);
+
+                if (!stopped) {
+                    pollTimeout = setTimeout(poll, document.hidden ? 15000 : 1000);
+                }
+            };
+
+            poll();
         } catch (e: unknown) {
             setIsProcessing(false);
             const msg = e instanceof Error ? e.message : String(e);
