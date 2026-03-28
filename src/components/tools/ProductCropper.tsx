@@ -49,6 +49,7 @@ export default function ProductCropper() {
     const [isLoading, setIsLoading] = useState(false);
     const [loadingText, setLoadingText] = useState('');
     const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('files');
+    const [inputSource, setInputSource] = useState<'files' | 'folder' | 'zip' | 'mixed' | null>(null);
 
     // Stats tracking
     const { recordUsage } = useStats();
@@ -146,6 +147,34 @@ export default function ProductCropper() {
     useEffect(() => {
         return () => files.forEach(f => URL.revokeObjectURL(f.preview));
     }, [files]);
+
+    const updateInputSource = useCallback((selectedFiles: File[], mode: 'files' | 'folder') => {
+        const hasZip = selectedFiles.some(file => file.name.toLowerCase().endsWith('.zip'));
+        const hasImages = selectedFiles.some(file => file.type.startsWith('image/'));
+
+        if (mode === 'folder') {
+            setInputSource('folder');
+            setPackAsZip(selectedFiles.length > 1);
+            return;
+        }
+
+        if (hasZip && hasImages) {
+            setInputSource('mixed');
+            setPackAsZip(true);
+            return;
+        }
+
+        if (hasZip) {
+            setInputSource('zip');
+            setPackAsZip(true);
+            return;
+        }
+
+        if (hasImages) {
+            setInputSource('files');
+            setPackAsZip(selectedFiles.length > 1);
+        }
+    }, []);
 
     // Extract images from ZIP file
     const extractFilesFromZip = useCallback(async (zipFile: File): Promise<File[]> => {
@@ -280,6 +309,7 @@ export default function ProductCropper() {
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length === 0) return;
+        updateInputSource(selectedFiles, 'files');
 
         setIsLoading(true);
         setLoadingText(`📂 Wczytywanie ${selectedFiles.length} plików...`);
@@ -291,12 +321,14 @@ export default function ProductCropper() {
             await addFiles(selectedFiles);
         } finally {
             setIsLoading(false);
+            e.target.value = '';
         }
     };
 
     const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length === 0) return;
+        updateInputSource(selectedFiles, 'folder');
 
         setIsLoading(true);
         setLoadingText(`📁 Wczytywanie folderu (${selectedFiles.length} plików)...`);
@@ -308,6 +340,7 @@ export default function ProductCropper() {
                     setTimeout(() => {
                         addFiles(selectedFiles);
                         setIsLoading(false);
+                        e.target.value = '';
                     }, 50);
                 });
             }, 50);
@@ -696,6 +729,7 @@ export default function ProductCropper() {
         processed.forEach(p => URL.revokeObjectURL(p.url));
         setFiles([]);
         setProcessed([]);
+        setInputSource(null);
     };
 
     return (
@@ -754,23 +788,49 @@ export default function ProductCropper() {
                 <p className="title">
                     {files.length > 0 ? `${files.length} zdjęć produktów` : 'Przeciągnij zdjęcia lub folder'}
                 </p>
-                <p className="subtitle" style={{ marginBottom: '1rem' }}>lub wrzuć archiwum ZIP ze zdjęciami</p>
+                <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem' }}>lub wrzuć archiwum ZIP ze zdjęciami</p>
+                {inputSource && (
+                    <p className="subtitle" style={{ marginBottom: '1rem', color: 'var(--accent)' }}>
+                        Wejście: {inputSource === 'folder' ? 'folder' : inputSource === 'zip' ? 'ZIP' : inputSource === 'mixed' ? 'pliki + ZIP' : 'pliki'} | Wyjście: {packAsZip ? 'ZIP' : 'pojedyncze pliki'}
+                    </p>
+                )}
 
                 <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                     <button
+                        type="button"
                         className={`btn ${uploadMode === 'files' ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => { setUploadMode('files'); document.getElementById('crop-input')?.click(); }}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setUploadMode('files');
+                            document.getElementById('crop-input')?.click();
+                        }}
                     >
                         🖼️ Pliki
                     </button>
                     <button
+                        type="button"
                         className={`btn ${uploadMode === 'folder' ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => { setUploadMode('folder'); document.getElementById('crop-folder-input')?.click(); }}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setUploadMode('folder');
+                            document.getElementById('crop-folder-input')?.click();
+                        }}
                     >
                         📁 Folder
                     </button>
                     {files.length > 0 && (
-                        <button onClick={clearAll} className="btn btn-secondary" style={{ background: 'var(--bg-tertiary)' }}>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                clearAll();
+                            }}
+                            className="btn btn-secondary"
+                            style={{ background: 'var(--bg-tertiary)' }}
+                        >
                             🗑️ Wyczyść
                         </button>
                     )}

@@ -34,6 +34,7 @@ export default function ImageConverter() {
     const [loadingText, setLoadingText] = useState('');
     const [namingOption, setNamingOption] = useState<'keep' | 'random'>('keep');
     const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('files');
+    const [inputSource, setInputSource] = useState<'files' | 'folder' | 'zip' | 'mixed' | null>(null);
     const [compareIndex, setCompareIndex] = useState<number | null>(null);
 
     // ZIP export option
@@ -55,6 +56,34 @@ export default function ImageConverter() {
     useEffect(() => {
         return () => files.forEach(f => URL.revokeObjectURL(f.preview));
     }, [files]);
+
+    const updateInputSource = useCallback((selectedFiles: File[], mode: 'files' | 'folder') => {
+        const hasZip = selectedFiles.some(file => file.name.toLowerCase().endsWith('.zip'));
+        const hasImages = selectedFiles.some(file => file.type.startsWith('image/'));
+
+        if (mode === 'folder') {
+            setInputSource('folder');
+            setPackAsZip(selectedFiles.length > 1);
+            return;
+        }
+
+        if (hasZip && hasImages) {
+            setInputSource('mixed');
+            setPackAsZip(true);
+            return;
+        }
+
+        if (hasZip) {
+            setInputSource('zip');
+            setPackAsZip(true);
+            return;
+        }
+
+        if (hasImages) {
+            setInputSource('files');
+            setPackAsZip(selectedFiles.length > 1);
+        }
+    }, []);
 
     const addFiles = useCallback(async (newFiles: File[]) => {
         const imageFiles = newFiles.filter(f => f.type.startsWith('image/'));
@@ -224,6 +253,7 @@ export default function ImageConverter() {
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length === 0) return;
+        updateInputSource(selectedFiles, 'files');
 
         setIsLoading(true);
         setLoadingText(`📂 Wczytywanie ${selectedFiles.length} plików...`);
@@ -235,6 +265,7 @@ export default function ImageConverter() {
                     setTimeout(() => {
                         addFilesWithZip(selectedFiles);
                         setIsLoading(false);
+                        e.target.value = '';
                     }, 50);
                 });
             }, 50);
@@ -244,6 +275,7 @@ export default function ImageConverter() {
     const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length === 0) return;
+        updateInputSource(selectedFiles, 'folder');
 
         setIsLoading(true);
         setLoadingText(`📁 Wczytywanie folderu (${selectedFiles.length} plików)...`);
@@ -255,6 +287,7 @@ export default function ImageConverter() {
                     setTimeout(() => {
                         addFilesWithZip(selectedFiles);
                         setIsLoading(false);
+                        e.target.value = '';
                     }, 50);
                 });
             }, 50);
@@ -486,26 +519,47 @@ export default function ImageConverter() {
                 <p className="title">
                     {files.length > 0 ? `${files.length} obrazów wybranych` : 'Przeciągnij obrazy lub folder tutaj'}
                 </p>
-                <p className="subtitle" style={{ marginBottom: '1rem' }}>lub wybierz poniżej</p>
+                <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem' }}>lub wybierz poniżej albo wrzuć ZIP</p>
+                {inputSource && (
+                    <p className="subtitle" style={{ marginBottom: '1rem', color: 'var(--accent)' }}>
+                        Wejście: {inputSource === 'folder' ? 'folder' : inputSource === 'zip' ? 'ZIP' : inputSource === 'mixed' ? 'pliki + ZIP' : 'pliki'} | Wyjście: {packAsZip ? 'ZIP' : 'pojedyncze pliki'}
+                    </p>
+                )}
 
                 <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                     <button
-                        onClick={() => { setUploadMode('files'); document.getElementById('img-input')?.click(); }}
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setUploadMode('files');
+                            document.getElementById('img-input')?.click();
+                        }}
                         className={`btn ${uploadMode === 'files' ? 'btn-primary' : 'btn-secondary'}`}
                     >
                         🖼️ Wybierz pliki
                     </button>
                     <button
-                        onClick={() => { setUploadMode('folder'); document.getElementById('folder-input')?.click(); }}
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setUploadMode('folder');
+                            document.getElementById('folder-input')?.click();
+                        }}
                         className={`btn ${uploadMode === 'folder' ? 'btn-primary' : 'btn-secondary'}`}
                     >
                         📁 Wybierz folder
                     </button>
                     {files.length > 0 && (
                         <button
-                            onClick={() => {
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
                                 setFiles([]);
                                 setConverted([]);
+                                setInputSource(null);
                             }}
                             className="btn btn-secondary"
                             style={{ background: 'var(--bg-tertiary)' }}
