@@ -31,7 +31,7 @@ except ImportError as e:
 # Auth imports - wrapped in try-except for debugging
 AUTH_AVAILABLE = False
 try:
-    from database import get_db, init_db, DATABASE_URL
+    from database import get_db, init_db, DATABASE_URL, get_database_info
     from models import User, ToolPermission, UserRole, RESTRICTED_TOOLS, Group, ActivityLog
     from auth import (
         hash_password, verify_password, create_tokens, verify_token,
@@ -50,6 +50,8 @@ except Exception as e:
     class GrantToolRequest: pass
     RESTRICTED_TOOLS = []
     DATABASE_URL = ""
+    def get_database_info():
+        return {"url": "", "engine": "unknown", "path": None}
 
 app = FastAPI(title="ToolBox Pro API")
 
@@ -337,10 +339,7 @@ def get_system_status_snapshot() -> dict:
             "min_free_disk_mb": MIN_FREE_DISK_MB,
             "max_disk_usage_percent": MAX_DISK_USAGE_PERCENT,
         },
-        "database": {
-            "url": DATABASE_URL,
-            "engine": "sqlite" if DATABASE_URL.startswith("sqlite") else "postgresql" if DATABASE_URL.startswith("postgresql") else "unknown",
-        },
+        "database": get_database_info(),
         "last_cleanup": last_cleanup_status,
     }
 
@@ -1103,6 +1102,21 @@ async def get_system_status(admin: User = Depends(require_admin)):
 async def run_cleanup(admin: User = Depends(require_admin)):
     cleanup_stale_temp_files()
     return get_system_status_snapshot()
+
+
+@app.get("/api/admin/database-backup")
+async def download_database_backup(admin: User = Depends(require_admin)):
+    info = get_database_info()
+    if info.get("engine") != "sqlite" or not info.get("path"):
+        raise HTTPException(status_code=400, detail="Database backup is only available for local SQLite deployments")
+
+    db_path = info["path"]
+    if not os.path.isfile(db_path):
+        raise HTTPException(status_code=404, detail="Database file not found")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"toolboxpro_db_backup_{timestamp}.sqlite3"
+    return FileResponse(db_path, filename=filename, media_type="application/octet-stream")
 
 @app.post("/api/process-perfumes")
 async def process_perfumes(

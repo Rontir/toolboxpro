@@ -60,6 +60,13 @@ if DATABASE_URL.startswith("sqlite:///"):
         migrate_legacy_sqlite_if_needed(sqlite_path)
         os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
 
+DATABASE_ENGINE = (
+    "sqlite" if DATABASE_URL.startswith("sqlite")
+    else "postgresql" if DATABASE_URL.startswith("postgresql")
+    else "unknown"
+)
+DATABASE_PATH = DATABASE_URL.replace("sqlite:///", "", 1) if DATABASE_ENGINE == "sqlite" else None
+
 # Create engine
 engine = create_engine(
     DATABASE_URL,
@@ -107,3 +114,11 @@ def init_db():
             print(f"⚠️ Enum migration skipped (may not exist yet): {e}")
     
     Base.metadata.create_all(bind=engine)
+
+
+def get_database_info() -> dict:
+    return {
+        "url": DATABASE_URL,
+        "engine": DATABASE_ENGINE,
+        "path": DATABASE_PATH,
+    }

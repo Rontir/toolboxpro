@@ -907,7 +907,7 @@ export default function ProductCropper() {
                 <p className="title" style={{ pointerEvents: 'none' }}>
                     {files.length > 0 ? `${files.length} zdjęć produktów` : 'Przeciągnij zdjęcia lub folder'}
                 </p>
-                <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem', pointerEvents: 'none' }}>uzyj przyciskow ponizej albo wrzuc archiwum ZIP ze zdjeciami</p>
+                <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem', pointerEvents: 'none' }}>uzyj przyciskow ponizej albo wrzuc archiwum ZIP ze zdjeciami. Przycisk plikow tez akceptuje ZIP.</p>
                 {inputSource && (
                     <p className="subtitle" style={{ marginBottom: '1rem', color: 'var(--accent)', pointerEvents: 'none' }}>
                         Wejście: {inputSource === 'folder' ? 'folder' : inputSource === 'zip' ? 'ZIP' : inputSource === 'mixed' ? 'pliki + ZIP' : 'pliki'} | Wyjście: {packAsZip ? 'ZIP' : 'pojedyncze pliki'}
@@ -925,7 +925,7 @@ export default function ProductCropper() {
                             openFilePicker();
                         }}
                     >
-                        🖼️ Pliki
+                        🖼️ Pliki / ZIP
                     </button>
                     <button
                         type="button"
@@ -948,7 +948,7 @@ export default function ProductCropper() {
                             openZipPicker();
                         }}
                     >
-                        📦 ZIP
+                        📦 Import ZIP
                     </button>
                     {files.length > 0 && (
                         <button

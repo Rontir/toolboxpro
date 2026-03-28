@@ -52,6 +52,7 @@ interface SystemStatus {
     database: {
         url: string;
         engine: string;
+        path: string | null;
     };
     last_cleanup: {
         last_run_at: string | null;
@@ -193,6 +194,28 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
             setError('Nie udało się uruchomić cleanupu');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const downloadDatabaseBackup = async () => {
+        try {
+            const res = await fetch(apiUrl('/api/admin/database-backup'), {
+                headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` },
+            });
+            if (!res.ok) throw new Error('Backup failed');
+
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `toolboxpro_db_backup_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.sqlite3`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+            showSuccess('Backup bazy pobrany');
+        } catch {
+            setError('Nie udało się pobrać backupu bazy');
         }
     };
 
@@ -341,6 +364,14 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                                 >
                                                     Wymuś cleanup
                                                 </button>
+                                                {systemStatus.database.engine === 'sqlite' && (
+                                                    <button
+                                                        onClick={downloadDatabaseBackup}
+                                                        style={{ padding: '0.6rem 1rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: 600 }}
+                                                    >
+                                                        Pobierz backup DB
+                                                    </button>
+                                                )}
                                             </div>
                                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
                                                 <div>
@@ -372,6 +403,11 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                                     <div style={{ wordBreak: 'break-all' }}>
                                                         {systemStatus.database.engine}: {systemStatus.database.url || 'brak'}
                                                     </div>
+                                                    {systemStatus.database.path && (
+                                                        <div style={{ marginTop: '0.35rem', color: 'var(--text-muted)', wordBreak: 'break-all', fontSize: '0.75rem' }}>
+                                                            Plik: {systemStatus.database.path}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                             {systemStatus.last_cleanup.last_run_at && (

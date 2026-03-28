@@ -634,7 +634,7 @@ export default function ImageConverter() {
                 <p className="title" style={{ pointerEvents: 'none' }}>
                     {files.length > 0 ? `${files.length} obrazów wybranych` : 'Przeciągnij obrazy lub folder tutaj'}
                 </p>
-                <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem', pointerEvents: 'none' }}>uzyj przyciskow ponizej albo wrzuc ZIP</p>
+                <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem', pointerEvents: 'none' }}>uzyj przyciskow ponizej albo wrzuc ZIP. Przycisk plikow tez akceptuje archiwa ZIP.</p>
                 {inputSource && (
                     <p className="subtitle" style={{ marginBottom: '1rem', color: 'var(--accent)', pointerEvents: 'none' }}>
                         Wejście: {inputSource === 'folder' ? 'folder' : inputSource === 'zip' ? 'ZIP' : inputSource === 'mixed' ? 'pliki + ZIP' : 'pliki'} | Wyjście: {packAsZip ? 'ZIP' : 'pojedyncze pliki'}
@@ -652,7 +652,7 @@ export default function ImageConverter() {
                         }}
                         className={`btn ${uploadMode === 'files' ? 'btn-primary' : 'btn-secondary'}`}
                     >
-                        🖼️ Wybierz pliki
+                        🖼️ Wybierz pliki / ZIP
                     </button>
                     <button
                         type="button"
@@ -675,7 +675,7 @@ export default function ImageConverter() {
                         }}
                         className="btn btn-secondary"
                     >
-                        📦 Wybierz ZIP
+                        📦 Import ZIP
                     </button>
                     {files.length > 0 && (
                         <button

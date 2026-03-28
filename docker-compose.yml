@@ -9,6 +9,8 @@ services:
       PORT: 8000
       DATABASE_URL: sqlite:////data/toolbox.db
       JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      TOOLBOX_DATA_DIR: ${TOOLBOX_DATA_DIR:-/data}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.119:3000}
       JOB_RESULT_TTL_SECONDS: ${JOB_RESULT_TTL_SECONDS:-600}
       TEMP_FILE_TTL_SECONDS: ${TEMP_FILE_TTL_SECONDS:-600}
