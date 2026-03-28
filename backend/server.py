@@ -249,6 +249,61 @@ def schedule_job_cleanup(job_id: str, delay_seconds: int = JOB_RESULT_TTL_SECOND
     timer.start()
 
 
+def get_directory_size_bytes(path: str) -> int:
+    total = 0
+    if not os.path.exists(path):
+        return total
+
+    for root, _dirs, files in os.walk(path):
+        for file_name in files:
+            file_path = os.path.join(root, file_name)
+            try:
+                total += os.path.getsize(file_path)
+            except OSError:
+                continue
+    return total
+
+
+def get_system_status_snapshot() -> dict:
+    temp_root = tempfile.gettempdir()
+    usage = shutil.disk_usage(temp_root)
+    temp_zip_paths = glob.glob(os.path.join(temp_root, "piko_result_*.zip"))
+    processing_root = os.path.join(temp_root, "piko_processing")
+
+    with jobs_lock:
+        job_items = list(jobs.values())
+
+    active_jobs = sum(1 for job in job_items if job.get('status') in {'pending', 'processing'})
+    finished_jobs = sum(1 for job in job_items if job.get('status') in {'completed', 'error'})
+
+    return {
+        "disk": {
+            "total_bytes": usage.total,
+            "used_bytes": usage.used,
+            "free_bytes": usage.free,
+            "used_percent": round((usage.used / max(usage.total, 1)) * 100, 2),
+            "pressure_high": is_disk_pressure_high(),
+        },
+        "temp": {
+            "tmp_dir": temp_root,
+            "result_zip_count": len(temp_zip_paths),
+            "result_zip_bytes": sum(os.path.getsize(path) for path in temp_zip_paths if os.path.exists(path)),
+            "processing_dir_bytes": get_directory_size_bytes(processing_root),
+            "ttl_seconds": TEMP_FILE_TTL_SECONDS,
+        },
+        "jobs": {
+            "active": active_jobs,
+            "finished": finished_jobs,
+            "tracked_total": len(job_items),
+            "result_ttl_seconds": JOB_RESULT_TTL_SECONDS,
+        },
+        "cleanup": {
+            "min_free_disk_mb": MIN_FREE_DISK_MB,
+            "max_disk_usage_percent": MAX_DISK_USAGE_PERCENT,
+        },
+    }
+
+
 # Initialize database on startup (only if auth is available)
 @app.on_event("startup")
 def startup_event():
@@ -995,6 +1050,12 @@ async def get_dashboard_stats(
         "logins_7d": logins_7d,
         "top_users": top_users_data
     }
+
+
+@app.get("/api/admin/system-status")
+async def get_system_status(admin: User = Depends(require_admin)):
+    cleanup_stale_temp_files()
+    return get_system_status_snapshot()
 
 @app.post("/api/process-perfumes")
 async def process_perfumes(

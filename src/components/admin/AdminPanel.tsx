@@ -24,6 +24,32 @@ interface DashboardStats {
     logins_24h: number; logins_7d: number;
     top_users: { user_id: number; email: string; display_name: string | null; activity_count: number }[];
 }
+interface SystemStatus {
+    disk: {
+        total_bytes: number;
+        used_bytes: number;
+        free_bytes: number;
+        used_percent: number;
+        pressure_high: boolean;
+    };
+    temp: {
+        tmp_dir: string;
+        result_zip_count: number;
+        result_zip_bytes: number;
+        processing_dir_bytes: number;
+        ttl_seconds: number;
+    };
+    jobs: {
+        active: number;
+        finished: number;
+        tracked_total: number;
+        result_ttl_seconds: number;
+    };
+    cleanup: {
+        min_free_disk_mb: number;
+        max_disk_usage_percent: number;
+    };
+}
 
 const TOOL_LABELS: Record<string, string> = { 'piko_empiko': '📥 PikoEmpiko', 'structure_matcher': '🔗 Dopasowywacz' };
 const ALL_TOOLS = Object.keys(TOOL_LABELS);
@@ -38,6 +64,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
     const [groups, setGroups] = useState<Group[]>([]);
     const [logs, setLogs] = useState<ActivityLog[]>([]);
     const [stats, setStats] = useState<DashboardStats | null>(null);
+    const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
@@ -57,16 +84,23 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
     const [newPassword, setNewPassword] = useState('');
 
     const showSuccess = (msg: string) => { setSuccessMessage(msg); setTimeout(() => setSuccessMessage(''), 3000); };
+    const formatBytes = (bytes: number) => {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    };
 
     const fetchAll = async () => {
         if (!user || (user.role !== 'admin' && user.role !== 'owner')) return;
         setIsLoading(true);
         try {
-            const [usersRes, groupsRes, logsRes, statsRes] = await Promise.all([
+            const [usersRes, groupsRes, logsRes, statsRes, systemRes] = await Promise.all([
                 fetch(apiUrl('/api/admin/users'), { headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } }),
                 fetch(apiUrl('/api/admin/groups'), { headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } }),
                 fetch(apiUrl('/api/admin/activity-logs?limit=100'), { headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } }),
-                fetch(apiUrl('/api/admin/dashboard-stats'), { headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } })
+                fetch(apiUrl('/api/admin/dashboard-stats'), { headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } }),
+                fetch(apiUrl('/api/admin/system-status'), { headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` } })
             ]);
             if (usersRes.ok) setUsers(await usersRes.json());
             if (groupsRes.ok) setGroups(await groupsRes.json());
@@ -76,6 +110,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                 setLogs(Array.isArray(logsData) ? logsData : (logsData.logs || []));
             }
             if (statsRes.ok) setStats(await statsRes.json());
+            if (systemRes.ok) setSystemStatus(await systemRes.json());
         } catch { setError(t('common.error')); }
         finally { setIsLoading(false); }
     };
@@ -232,6 +267,66 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                     <div style={{ fontSize: '2rem', fontWeight: 700, color: '#8b5cf6' }}>{stats?.logins_7d || 0}</div>
                                     <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>{t('admin.logins7d')}</div>
                                 </div>
+                                {systemStatus && (
+                                    <>
+                                        <div style={{ ...cardStyle, borderColor: systemStatus.disk.pressure_high ? '#ef444455' : 'var(--border)' }}>
+                                            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: systemStatus.disk.pressure_high ? '#ef4444' : '#22c55e' }}>
+                                                {systemStatus.disk.used_percent}%
+                                            </div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Zużycie dysku `/tmp`</div>
+                                            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                Wolne: {formatBytes(systemStatus.disk.free_bytes)}
+                                            </div>
+                                        </div>
+                                        <div style={cardStyle}>
+                                            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#3b82f6' }}>
+                                                {systemStatus.temp.result_zip_count}
+                                            </div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Tymczasowe ZIP-y</div>
+                                            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                {formatBytes(systemStatus.temp.result_zip_bytes)}
+                                            </div>
+                                        </div>
+                                        <div style={cardStyle}>
+                                            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f59e0b' }}>
+                                                {systemStatus.jobs.active}
+                                            </div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Aktywne joby</div>
+                                            <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                Zakończone: {systemStatus.jobs.finished}
+                                            </div>
+                                        </div>
+                                        <div style={{ ...cardStyle, gridColumn: 'span 2' }}>
+                                            <div style={{ fontWeight: 600, marginBottom: '0.75rem' }}>🧹 Cleanup</div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
+                                                <div>
+                                                    <div style={{ color: 'var(--text-muted)' }}>TTL wyników</div>
+                                                    <div>{Math.round(systemStatus.jobs.result_ttl_seconds / 60)} min</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: 'var(--text-muted)' }}>TTL tempów</div>
+                                                    <div>{Math.round(systemStatus.temp.ttl_seconds / 60)} min</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: 'var(--text-muted)' }}>Min. wolnego miejsca</div>
+                                                    <div>{systemStatus.cleanup.min_free_disk_mb} MB</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: 'var(--text-muted)' }}>Próg użycia dysku</div>
+                                                    <div>{systemStatus.cleanup.max_disk_usage_percent}%</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: 'var(--text-muted)' }}>Katalog przetwarzania</div>
+                                                    <div>{formatBytes(systemStatus.temp.processing_dir_bytes)}</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: 'var(--text-muted)' }}>Śledzone joby</div>
+                                                    <div>{systemStatus.jobs.tracked_total}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                                 {stats?.top_users && stats.top_users.length > 0 && (
                                     <div style={{ ...cardStyle, gridColumn: 'span 2' }}>
                                         <div style={{ fontWeight: 600, marginBottom: '1rem' }}>🏆 {t('admin.activeUsers')}</div>
