@@ -72,6 +72,15 @@ security = HTTPBearer(auto_error=False)
 # Job Store
 jobs: Dict[str, dict] = {}
 jobs_lock = threading.RLock()
+last_cleanup_status: Dict[str, object] = {
+    "last_run_at": None,
+    "removed_result_zips": 0,
+    "removed_processing_dirs": 0,
+    "removed_jobs": 0,
+    "pressure_triggered": False,
+    "disk_before": None,
+    "disk_after": None,
+}
 
 
 def get_int_env(name: str, default: int) -> int:
@@ -130,6 +139,16 @@ def is_disk_pressure_high() -> bool:
     return free_mb < MIN_FREE_DISK_MB or used_percent >= MAX_DISK_USAGE_PERCENT
 
 
+def get_disk_snapshot() -> dict:
+    usage = shutil.disk_usage(tempfile.gettempdir())
+    return {
+        "total_bytes": usage.total,
+        "used_bytes": usage.used,
+        "free_bytes": usage.free,
+        "used_percent": round((usage.used / max(usage.total, 1)) * 100, 2),
+    }
+
+
 def cleanup_finished_jobs(force_all_finished: bool = False) -> int:
     removable_statuses = {'completed', 'error'}
     candidates = []
@@ -172,6 +191,15 @@ def cleanup_finished_jobs(force_all_finished: bool = False) -> int:
 
 
 def cleanup_stale_temp_files() -> None:
+    cleanup_summary = {
+        "last_run_at": datetime.now().isoformat(),
+        "removed_result_zips": 0,
+        "removed_processing_dirs": 0,
+        "removed_jobs": 0,
+        "pressure_triggered": False,
+        "disk_before": get_disk_snapshot(),
+        "disk_after": None,
+    }
     now_ts = datetime.now().timestamp()
     cutoff_ts = now_ts - TEMP_FILE_TTL_SECONDS
     temp_root = tempfile.gettempdir()
@@ -192,6 +220,7 @@ def cleanup_stale_temp_files() -> None:
                 continue
             if os.path.getmtime(path) < cutoff_ts:
                 _delete_temp_path(path)
+                cleanup_summary["removed_result_zips"] += 1
         except FileNotFoundError:
             continue
 
@@ -201,12 +230,14 @@ def cleanup_stale_temp_files() -> None:
             try:
                 if os.path.getmtime(path) < cutoff_ts:
                     _delete_temp_path(path)
+                    cleanup_summary["removed_processing_dirs"] += 1
             except FileNotFoundError:
                 continue
 
-    cleanup_finished_jobs(force_all_finished=False)
+    cleanup_summary["removed_jobs"] += cleanup_finished_jobs(force_all_finished=False)
 
     if is_disk_pressure_high():
+        cleanup_summary["pressure_triggered"] = True
         zip_candidates = []
         for path in glob.glob(os.path.join(temp_root, "piko_result_*.zip")):
             try:
@@ -219,10 +250,14 @@ def cleanup_stale_temp_files() -> None:
 
         for _mtime, path in sorted(zip_candidates):
             _delete_temp_path(path)
+            cleanup_summary["removed_result_zips"] += 1
             if not is_disk_pressure_high():
                 break
 
-        cleanup_finished_jobs(force_all_finished=True)
+        cleanup_summary["removed_jobs"] += cleanup_finished_jobs(force_all_finished=True)
+
+    cleanup_summary["disk_after"] = get_disk_snapshot()
+    last_cleanup_status.update(cleanup_summary)
 
 
 def touch_job(job_id: str) -> None:
@@ -301,6 +336,7 @@ def get_system_status_snapshot() -> dict:
             "min_free_disk_mb": MIN_FREE_DISK_MB,
             "max_disk_usage_percent": MAX_DISK_USAGE_PERCENT,
         },
+        "last_cleanup": last_cleanup_status,
     }
 
 
@@ -1054,6 +1090,12 @@ async def get_dashboard_stats(
 
 @app.get("/api/admin/system-status")
 async def get_system_status(admin: User = Depends(require_admin)):
+    cleanup_stale_temp_files()
+    return get_system_status_snapshot()
+
+
+@app.post("/api/admin/run-cleanup")
+async def run_cleanup(admin: User = Depends(require_admin)):
     cleanup_stale_temp_files()
     return get_system_status_snapshot()
 

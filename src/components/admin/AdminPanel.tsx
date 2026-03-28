@@ -49,6 +49,21 @@ interface SystemStatus {
         min_free_disk_mb: number;
         max_disk_usage_percent: number;
     };
+    last_cleanup: {
+        last_run_at: string | null;
+        removed_result_zips: number;
+        removed_processing_dirs: number;
+        removed_jobs: number;
+        pressure_triggered: boolean;
+        disk_before: {
+            free_bytes: number;
+            used_percent: number;
+        } | null;
+        disk_after: {
+            free_bytes: number;
+            used_percent: number;
+        } | null;
+    };
 }
 
 const TOOL_LABELS: Record<string, string> = { 'piko_empiko': '📥 PikoEmpiko', 'structure_matcher': '🔗 Dopasowywacz' };
@@ -158,6 +173,23 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
         showSuccess(t('admin.resetPasswordSuccess'));
         setShowResetModal(false);
         setNewPassword('');
+    };
+
+    const runCleanup = async () => {
+        setIsLoading(true);
+        try {
+            const res = await fetch(apiUrl('/api/admin/run-cleanup'), {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${getAccessToken() || ''}` },
+            });
+            if (!res.ok) throw new Error('Cleanup failed');
+            setSystemStatus(await res.json());
+            showSuccess('Cleanup zakończony');
+        } catch {
+            setError('Nie udało się uruchomić cleanupu');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     // Group actions
@@ -297,7 +329,15 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                             </div>
                                         </div>
                                         <div style={{ ...cardStyle, gridColumn: 'span 2' }}>
-                                            <div style={{ fontWeight: 600, marginBottom: '0.75rem' }}>🧹 Cleanup</div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', gap: '1rem', flexWrap: 'wrap' }}>
+                                                <div style={{ fontWeight: 600 }}>🧹 Cleanup</div>
+                                                <button
+                                                    onClick={runCleanup}
+                                                    style={{ padding: '0.6rem 1rem', background: 'var(--accent)', border: 'none', borderRadius: '8px', color: 'black', cursor: 'pointer', fontWeight: 600 }}
+                                                >
+                                                    Wymuś cleanup
+                                                </button>
+                                            </div>
                                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
                                                 <div>
                                                     <div style={{ color: 'var(--text-muted)' }}>TTL wyników</div>
@@ -324,6 +364,40 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                                     <div>{systemStatus.jobs.tracked_total}</div>
                                                 </div>
                                             </div>
+                                            {systemStatus.last_cleanup.last_run_at && (
+                                                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)', fontSize: '0.8rem', color: 'var(--text-muted)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+                                                    <div>
+                                                        <div>Ostatni cleanup</div>
+                                                        <div style={{ color: 'white' }}>{new Date(systemStatus.last_cleanup.last_run_at).toLocaleString('pl-PL')}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div>Usunięte ZIP-y</div>
+                                                        <div style={{ color: 'white' }}>{systemStatus.last_cleanup.removed_result_zips}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div>Usunięte katalogi</div>
+                                                        <div style={{ color: 'white' }}>{systemStatus.last_cleanup.removed_processing_dirs}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div>Usunięte joby</div>
+                                                        <div style={{ color: 'white' }}>{systemStatus.last_cleanup.removed_jobs}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div>Tryb awaryjny</div>
+                                                        <div style={{ color: systemStatus.last_cleanup.pressure_triggered ? '#ef4444' : 'white' }}>
+                                                            {systemStatus.last_cleanup.pressure_triggered ? 'Tak' : 'Nie'}
+                                                        </div>
+                                                    </div>
+                                                    {systemStatus.last_cleanup.disk_before && systemStatus.last_cleanup.disk_after && (
+                                                        <div>
+                                                            <div>Wolne miejsce</div>
+                                                            <div style={{ color: 'white' }}>
+                                                                {formatBytes(systemStatus.last_cleanup.disk_before.free_bytes)} -> {formatBytes(systemStatus.last_cleanup.disk_after.free_bytes)}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </>
                                 )}
