@@ -54,6 +54,9 @@ interface SystemStatus {
         engine: string;
         path: string | null;
     };
+    auth: {
+        admin_email_count: number;
+    };
     last_cleanup: {
         last_run_at: string | null;
         removed_result_zips: number;
@@ -397,6 +400,10 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                                                 <div>
                                                     <div style={{ color: 'var(--text-muted)' }}>Śledzone joby</div>
                                                     <div>{systemStatus.jobs.tracked_total}</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: 'var(--text-muted)' }}>Maile owner/admin z .env</div>
+                                                    <div>{systemStatus.auth.admin_email_count}</div>
                                                 </div>
                                                 <div style={{ gridColumn: '1 / -1' }}>
                                                     <div style={{ color: 'var(--text-muted)' }}>Baza danych</div>

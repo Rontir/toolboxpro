@@ -31,7 +31,7 @@ except ImportError as e:
 # Auth imports - wrapped in try-except for debugging
 AUTH_AVAILABLE = False
 try:
-    from database import get_db, init_db, DATABASE_URL, get_database_info
+    from database import get_db, init_db, DATABASE_URL, get_database_info, SessionLocal
     from models import User, ToolPermission, UserRole, RESTRICTED_TOOLS, Group, ActivityLog
     from auth import (
         hash_password, verify_password, create_tokens, verify_token,
@@ -68,6 +68,11 @@ def get_cors_origins() -> List[str]:
         "https://toolboxpro.onrender.com",
         "https://toolboxpro-api.onrender.com",
     ]
+
+
+def get_admin_emails() -> List[str]:
+    raw_value = os.getenv("ADMIN_EMAILS", "")
+    return [email.strip().lower() for email in raw_value.split(",") if email.strip()]
 
 # Security
 security = HTTPBearer(auto_error=False)
@@ -340,8 +345,39 @@ def get_system_status_snapshot() -> dict:
             "max_disk_usage_percent": MAX_DISK_USAGE_PERCENT,
         },
         "database": get_database_info(),
+        "auth": {
+            "admin_email_count": len(get_admin_emails()),
+        },
         "last_cleanup": last_cleanup_status,
     }
+
+
+def sync_admin_roles_from_env() -> None:
+    admin_emails = get_admin_emails()
+    if not AUTH_AVAILABLE or not admin_emails:
+        return
+
+    db = SessionLocal()
+    try:
+        users_to_promote = (
+            db.query(User)
+            .filter(User.email.in_(admin_emails))
+            .filter(User.role != UserRole.OWNER)
+            .all()
+        )
+        if not users_to_promote:
+            return
+
+        for user in users_to_promote:
+            user.role = UserRole.OWNER
+
+        db.commit()
+        print(f"✅ Synced OWNER role for {len(users_to_promote)} configured admin email(s)")
+    except Exception as exc:
+        db.rollback()
+        print(f"⚠️ Failed to sync admin roles from ADMIN_EMAILS: {exc}")
+    finally:
+        db.close()
 
 
 # Initialize database on startup (only if auth is available)
@@ -351,6 +387,7 @@ def startup_event():
     if AUTH_AVAILABLE:
         try:
             init_db()
+            sync_admin_roles_from_env()
             print("✅ Database initialized")
         except Exception as e:
             print(f"⚠️ Database init failed: {e}")
@@ -594,7 +631,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Email already registered")
         
         # Check if this email should be auto-promoted to admin/owner
-        admin_emails = os.getenv("ADMIN_EMAILS", "xmikezien@gmail.com").lower().split(",")
+        admin_emails = get_admin_emails()
         user_role = UserRole.OWNER if user_data.email.lower() in admin_emails else UserRole.USER
         
         # Create user
@@ -643,7 +680,7 @@ async def login(credentials: UserLogin, request: Request, db: Session = Depends(
         print(f"Failed to log login: {e}")
 
     # Auto-promote to OWNER if email matches (self-healing)
-    admin_emails = os.getenv("ADMIN_EMAILS", "xmikezien@gmail.com").lower().split(",")
+    admin_emails = get_admin_emails()
     if user.email.lower() in admin_emails and user.role != UserRole.OWNER:
         user.role = UserRole.OWNER
         db.commit()
