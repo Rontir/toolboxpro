@@ -22,6 +22,63 @@ interface ConvertedImage {
 
 const FORMATS = ['PNG', 'JPG', 'WEBP', 'GIF', 'BMP'];
 
+function splitFileName(name: string): { base: string; ext: string } {
+    const lastDot = name.lastIndexOf('.');
+    if (lastDot <= 0) {
+        return { base: name, ext: '' };
+    }
+    return {
+        base: name.slice(0, lastDot),
+        ext: name.slice(lastDot),
+    };
+}
+
+function ensureUniqueName(name: string, usedNames: Map<string, number>): string {
+    const currentCount = usedNames.get(name) || 0;
+    if (currentCount === 0) {
+        usedNames.set(name, 1);
+        return name;
+    }
+
+    const { base, ext } = splitFileName(name);
+    let nextIndex = currentCount + 1;
+    let candidate = `${base}_${nextIndex}${ext}`;
+
+    while (usedNames.has(candidate)) {
+        nextIndex += 1;
+        candidate = `${base}_${nextIndex}${ext}`;
+    }
+
+    usedNames.set(name, nextIndex);
+    usedNames.set(candidate, 1);
+    return candidate;
+}
+
+function getZipEntryOutputName(path: string, usedNames: Map<string, number>): string {
+    const normalized = path.replace(/^\/+/, '').replace(/\\/g, '/');
+    const segments = normalized.split('/').filter(Boolean);
+    const rawName = segments.join('__') || path;
+    return ensureUniqueName(rawName, usedNames);
+}
+
+async function readAllDirectoryEntries(
+    dirReader: FileSystemDirectoryReader,
+): Promise<FileSystemEntry[]> {
+    const allEntries: FileSystemEntry[] = [];
+
+    while (true) {
+        const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+            dirReader.readEntries(resolve, reject);
+        });
+
+        if (batch.length === 0) {
+            return allEntries;
+        }
+
+        allEntries.push(...batch);
+    }
+}
+
 export default function ImageConverter() {
     const [files, setFiles] = useState<FilePreview[]>([]);
     const [format, setFormat] = useState('WEBP');
@@ -36,6 +93,7 @@ export default function ImageConverter() {
     const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('files');
     const [inputSource, setInputSource] = useState<'files' | 'folder' | 'zip' | 'mixed' | null>(null);
     const [compareIndex, setCompareIndex] = useState<number | null>(null);
+    const [processingErrors, setProcessingErrors] = useState<string[]>([]);
 
     // ZIP export option
     const [packAsZip, setPackAsZip] = useState(true);
@@ -127,6 +185,7 @@ export default function ImageConverter() {
             setLoadingText(`📦 Rozpakowywanie ${zipFile.name}...`);
             const zip = await JSZip.loadAsync(zipFile);
             const imageFiles: File[] = [];
+            const usedNames = new Map<string, number>();
 
             const entries = Object.entries(zip.files);
             for (let i = 0; i < entries.length; i++) {
@@ -142,7 +201,7 @@ export default function ImageConverter() {
                 setLoadingText(`📦 Rozpakowywanie ${i + 1}/${entries.length}...`);
 
                 const blob = await zipEntry.async('blob');
-                const fileName = path.split('/').pop() || path;
+                const fileName = getZipEntryOutputName(path, usedNames);
                 const file = new File([blob], fileName, { type: `image/${ext === 'jpg' ? 'jpeg' : ext}` });
                 imageFiles.push(file);
             }
@@ -237,14 +296,14 @@ export default function ImageConverter() {
                 });
             } else if (item.isDirectory) {
                 const dirReader = (item as FileSystemDirectoryEntry).createReader();
-                dirReader.readEntries(async entries => {
+                readAllDirectoryEntries(dirReader).then(async entries => {
                     const files: File[] = [];
                     for (const entry of entries) {
                         const subFiles = await traverseFileTree(entry);
                         files.push(...subFiles);
                     }
                     resolve(files);
-                });
+                }).catch(() => resolve([]));
             } else {
                 resolve([]);
             }
@@ -252,48 +311,44 @@ export default function ImageConverter() {
     };
 
     // Wrapper to show loading before processing files
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length === 0) return;
         updateInputSource(selectedFiles, 'files');
+        setProcessingErrors([]);
 
         setIsLoading(true);
         setLoadingText(`📂 Wczytywanie ${selectedFiles.length} plików...`);
 
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                setLoadingText(`📸 Tworzenie podglądów...`);
-                requestAnimationFrame(() => {
-                    setTimeout(() => {
-                        addFilesWithZip(selectedFiles);
-                        setIsLoading(false);
-                        e.target.value = '';
-                    }, 50);
-                });
-            }, 50);
-        });
+        await new Promise(resolve => setTimeout(resolve, 50));
+        setLoadingText('📸 Tworzenie podglądów...');
+
+        try {
+            await addFilesWithZip(selectedFiles);
+        } finally {
+            setIsLoading(false);
+            e.target.value = '';
+        }
     };
 
-    const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length === 0) return;
         updateInputSource(selectedFiles, 'folder');
+        setProcessingErrors([]);
 
         setIsLoading(true);
         setLoadingText(`📁 Wczytywanie folderu (${selectedFiles.length} plików)...`);
 
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                setLoadingText(`📸 Tworzenie podglądów...`);
-                requestAnimationFrame(() => {
-                    setTimeout(() => {
-                        addFilesWithZip(selectedFiles);
-                        setIsLoading(false);
-                        e.target.value = '';
-                    }, 50);
-                });
-            }, 50);
-        });
+        await new Promise(resolve => setTimeout(resolve, 50));
+        setLoadingText('📸 Tworzenie podglądów...');
+
+        try {
+            await addFilesWithZip(selectedFiles);
+        } finally {
+            setIsLoading(false);
+            e.target.value = '';
+        }
     };
 
     const removeFile = (index: number) => {
@@ -318,7 +373,10 @@ export default function ImageConverter() {
         if (files.length === 0) return;
         setIsProcessing(true);
         setConverted([]);
+        setProcessingErrors([]);
         const results: ConvertedImage[] = [];
+        const failedFiles: string[] = [];
+        const usedOutputNames = new Map<string, number>();
         const fmt = format.toLowerCase();
 
         for (let i = 0; i < files.length; i++) {
@@ -350,18 +408,20 @@ export default function ImageConverter() {
                 });
 
                 results.push({
-                    name: getOutputName(file.name, fmt),
+                    name: ensureUniqueName(getOutputName(file.name, fmt), usedOutputNames),
                     url: URL.createObjectURL(blob),
                     originalUrl: preview,
                     originalSize: file.size,
                     newSize: blob.size,
                 });
             } catch (e) {
-                console.error('Error', e);
+                console.error('Error converting file', file.name, e);
+                failedFiles.push(file.name);
             }
         }
 
         setConverted(results);
+        setProcessingErrors(failedFiles);
         setProgress(100);
         setIsProcessing(false);
 
@@ -565,6 +625,7 @@ export default function ImageConverter() {
                                 setFiles([]);
                                 setConverted([]);
                                 setInputSource(null);
+                                setProcessingErrors([]);
                             }}
                             className="btn btn-secondary"
                             style={{ background: 'var(--bg-tertiary)' }}
@@ -600,6 +661,18 @@ export default function ImageConverter() {
                                 </div>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {processingErrors.length > 0 && (
+                <div className="card" style={{ borderColor: '#f59e0b' }}>
+                    <div className="card-header">
+                        <span>⚠️ Pominięte pliki ({processingErrors.length})</span>
+                    </div>
+                    <div className="card-body" style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                        {processingErrors.slice(0, 10).join(', ')}
+                        {processingErrors.length > 10 ? ` i jeszcze ${processingErrors.length - 10}` : ''}
                     </div>
                 </div>
             )}

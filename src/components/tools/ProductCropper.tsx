@@ -17,6 +17,63 @@ interface ProcessedImage {
     newSize: { w: number; h: number };
 }
 
+function splitFileName(name: string): { base: string; ext: string } {
+    const lastDot = name.lastIndexOf('.');
+    if (lastDot <= 0) {
+        return { base: name, ext: '' };
+    }
+    return {
+        base: name.slice(0, lastDot),
+        ext: name.slice(lastDot),
+    };
+}
+
+function ensureUniqueName(name: string, usedNames: Map<string, number>): string {
+    const currentCount = usedNames.get(name) || 0;
+    if (currentCount === 0) {
+        usedNames.set(name, 1);
+        return name;
+    }
+
+    const { base, ext } = splitFileName(name);
+    let nextIndex = currentCount + 1;
+    let candidate = `${base}_${nextIndex}${ext}`;
+
+    while (usedNames.has(candidate)) {
+        nextIndex += 1;
+        candidate = `${base}_${nextIndex}${ext}`;
+    }
+
+    usedNames.set(name, nextIndex);
+    usedNames.set(candidate, 1);
+    return candidate;
+}
+
+function getZipEntryOutputName(path: string, usedNames: Map<string, number>): string {
+    const normalized = path.replace(/^\/+/, '').replace(/\\/g, '/');
+    const segments = normalized.split('/').filter(Boolean);
+    const rawName = segments.join('__') || path;
+    return ensureUniqueName(rawName, usedNames);
+}
+
+async function readAllDirectoryEntries(
+    dirReader: FileSystemDirectoryReader,
+): Promise<FileSystemEntry[]> {
+    const allEntries: FileSystemEntry[] = [];
+
+    while (true) {
+        const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+            dirReader.readEntries(resolve, reject);
+        });
+
+        if (batch.length === 0) {
+            return allEntries;
+        }
+
+        allEntries.push(...batch);
+    }
+}
+
 const PLATFORMS = [
     { id: 'original', label: 'Oryginał', icon: '📐', width: 0, height: 0 },
     { id: 'allegro', label: 'Allegro', icon: '🛒', width: 1000, height: 1000 },
@@ -50,6 +107,7 @@ export default function ProductCropper() {
     const [loadingText, setLoadingText] = useState('');
     const [uploadMode, setUploadMode] = useState<'folder' | 'files'>('files');
     const [inputSource, setInputSource] = useState<'files' | 'folder' | 'zip' | 'mixed' | null>(null);
+    const [processingErrors, setProcessingErrors] = useState<string[]>([]);
 
     // Stats tracking
     const { recordUsage } = useStats();
@@ -184,6 +242,7 @@ export default function ProductCropper() {
             setLoadingText(`📦 Rozpakowywanie ${zipFile.name}...`);
             const zip = await JSZip.loadAsync(zipFile);
             const imageFiles: File[] = [];
+            const usedNames = new Map<string, number>();
 
             const entries = Object.entries(zip.files);
             for (let i = 0; i < entries.length; i++) {
@@ -199,7 +258,7 @@ export default function ProductCropper() {
                 setLoadingText(`📦 Rozpakowywanie ${i + 1}/${entries.length}...`);
 
                 const blob = await zipEntry.async('blob');
-                const fileName = path.split('/').pop() || path;
+                const fileName = getZipEntryOutputName(path, usedNames);
                 const file = new File([blob], fileName, { type: `image/${ext === 'jpg' ? 'jpeg' : ext}` });
                 imageFiles.push(file);
             }
@@ -293,14 +352,14 @@ export default function ProductCropper() {
                 (item as FileSystemFileEntry).file(file => resolve([file]));
             } else if (item.isDirectory) {
                 const dirReader = (item as FileSystemDirectoryEntry).createReader();
-                dirReader.readEntries(async entries => {
+                readAllDirectoryEntries(dirReader).then(async entries => {
                     const files: File[] = [];
                     for (const entry of entries) {
                         const subFiles = await traverseFileTree(entry);
                         files.push(...subFiles);
                     }
                     resolve(files);
-                });
+                }).catch(() => resolve([]));
             } else {
                 resolve([]);
             }
@@ -312,6 +371,7 @@ export default function ProductCropper() {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length === 0) return;
         updateInputSource(selectedFiles, 'files');
+        setProcessingErrors([]);
 
         setIsLoading(true);
         setLoadingText(`📂 Wczytywanie ${selectedFiles.length} plików...`);
@@ -327,26 +387,24 @@ export default function ProductCropper() {
         }
     };
 
-    const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length === 0) return;
         updateInputSource(selectedFiles, 'folder');
+        setProcessingErrors([]);
 
         setIsLoading(true);
         setLoadingText(`📁 Wczytywanie folderu (${selectedFiles.length} plików)...`);
 
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                setLoadingText(`📸 Tworzenie podglądów...`);
-                requestAnimationFrame(() => {
-                    setTimeout(() => {
-                        addFiles(selectedFiles);
-                        setIsLoading(false);
-                        e.target.value = '';
-                    }, 50);
-                });
-            }, 50);
-        });
+        await new Promise(resolve => setTimeout(resolve, 50));
+        setLoadingText('📸 Tworzenie podglądów...');
+
+        try {
+            await addFiles(selectedFiles);
+        } finally {
+            setIsLoading(false);
+            e.target.value = '';
+        }
     };
 
     const getPlatformSize = () => {
@@ -471,7 +529,10 @@ export default function ProductCropper() {
 
         setIsProcessing(true);
         setProcessed([]);
+        setProcessingErrors([]);
         const results: ProcessedImage[] = [];
+        const failedFiles: string[] = [];
+        const usedOutputNames = new Map<string, number>();
         const platformData = getPlatformSize();
         const bgColor = getBackgroundColor();
         // 'keep' means preserve original transparency, 'transparent' means explicit transparent
@@ -626,22 +687,24 @@ export default function ProductCropper() {
                 });
 
                 const baseName = file.name.replace(/\.[^.]+$/, '');
-                const outputName = namingOption === 'suffix'
+                const outputNameBase = namingOption === 'suffix'
                     ? `${baseName}_${platform}.${finalExt}`
                     : `${baseName}.${finalExt}`;
 
                 results.push({
-                    name: outputName,
+                    name: ensureUniqueName(outputNameBase, usedOutputNames),
                     url: URL.createObjectURL(blob),
                     originalSize: { w: img.width, h: img.height },
                     newSize: { w: targetW, h: targetH },
                 });
             } catch (e) {
                 console.error('Error processing', file.name, e);
+                failedFiles.push(file.name);
             }
         }
 
         setProcessed(results);
+        setProcessingErrors(failedFiles);
         setProgress(100);
         setIsProcessing(false);
 
@@ -732,6 +795,7 @@ export default function ProductCropper() {
         setFiles([]);
         setProcessed([]);
         setInputSource(null);
+        setProcessingErrors([]);
     };
 
     const openFilePicker = useCallback(() => {
@@ -890,6 +954,18 @@ export default function ProductCropper() {
                                 </div>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {processingErrors.length > 0 && (
+                <div className="card" style={{ borderColor: '#f59e0b' }}>
+                    <div className="card-header">
+                        <span>⚠️ Pominięte pliki ({processingErrors.length})</span>
+                    </div>
+                    <div className="card-body" style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                        {processingErrors.slice(0, 10).join(', ')}
+                        {processingErrors.length > 10 ? ` i jeszcze ${processingErrors.length - 10}` : ''}
                     </div>
                 </div>
             )}
