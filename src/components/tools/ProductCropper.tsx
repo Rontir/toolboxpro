@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useStats } from '../Stats';
 import { useUndoRedo, useUndoRedoKeyboard, UndoRedoButtons } from '@/hooks/useUndoRedo';
 import JSZip from 'jszip';
+import { downloadFiles } from '@/lib/downloads';
 
 interface FilePreview {
     file: File;
@@ -154,6 +155,7 @@ export default function ProductCropper() {
     const [packAsZip, setPackAsZip] = useState(true);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const folderInputRef = useRef<HTMLInputElement>(null);
+    const zipInputRef = useRef<HTMLInputElement>(null);
 
     // Drag state for crop box
     const [dragCorner, setDragCorner] = useState<'tl' | 'tr' | 'bl' | 'br' | 'move' | null>(null);
@@ -398,6 +400,27 @@ export default function ProductCropper() {
 
         await new Promise(resolve => setTimeout(resolve, 50));
         setLoadingText('📸 Tworzenie podglądów...');
+
+        try {
+            await addFiles(selectedFiles);
+        } finally {
+            setIsLoading(false);
+            e.target.value = '';
+        }
+    };
+
+    const handleZipSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = Array.from(e.target.files || []);
+        if (selectedFiles.length === 0) return;
+        updateInputSource(selectedFiles, 'files');
+        setUploadMode('files');
+        setProcessingErrors([]);
+
+        setIsLoading(true);
+        setLoadingText(`📦 Wczytywanie ${selectedFiles.length} archiwów ZIP...`);
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+        setLoadingText('📸 Rozpakowywanie i tworzenie podglądów...');
 
         try {
             await addFiles(selectedFiles);
@@ -734,12 +757,22 @@ export default function ProductCropper() {
 
         // If only 1 file OR ZIP mode is off, download individually
         if (processed.length === 1 || !packAsZip) {
-            processed.forEach(img => {
-                const a = document.createElement('a');
-                a.href = img.url;
-                a.download = img.name;
-                a.click();
-            });
+            setIsLoading(true);
+            setLoadingText(processed.length === 1 ? '⬇️ Pobieranie pliku...' : '📁 Wybierz folder docelowy...');
+
+            try {
+                const mode = await downloadFiles(
+                    processed.map(img => ({ name: img.name, url: img.url })),
+                    setLoadingText,
+                );
+
+                if (mode === 'browser' && processed.length > 20) {
+                    alert('Przeglądarka może ograniczać masowe pobieranie pojedynczych plików. Jeśli chcesz pobrać bardzo dużo obrazów naraz, najlepiej zostawić pakowanie do ZIP albo wybrać folder zapisu, gdy przeglądarka o to poprosi.');
+                }
+            } finally {
+                setIsLoading(false);
+                setLoadingText('');
+            }
             return;
         }
 
@@ -806,6 +839,10 @@ export default function ProductCropper() {
         folderInputRef.current?.click();
     }, []);
 
+    const openZipPicker = useCallback(() => {
+        zipInputRef.current?.click();
+    }, []);
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {/* Loading/Processing Overlay */}
@@ -853,6 +890,15 @@ export default function ProductCropper() {
                     className="hidden"
                     onChange={handleFolderSelect}
                 />
+                <input
+                    type="file"
+                    id="crop-zip-input"
+                    ref={zipInputRef}
+                    accept=".zip,application/zip"
+                    multiple
+                    className="hidden"
+                    onChange={handleZipSelect}
+                />
                 <span className="icon" style={{ pointerEvents: 'none' }}>✏️</span>
                 <p className="title" style={{ pointerEvents: 'none' }}>
                     {files.length > 0 ? `${files.length} zdjęć produktów` : 'Przeciągnij zdjęcia lub folder'}
@@ -888,6 +934,17 @@ export default function ProductCropper() {
                         }}
                     >
                         📁 Folder
+                    </button>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openZipPicker();
+                        }}
+                    >
+                        📦 ZIP
                     </button>
                     {files.length > 0 && (
                         <button

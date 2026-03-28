@@ -50,9 +50,13 @@ export function Dashboard({ tools, onNavigate }: DashboardProps) {
         setTipIndex(Math.floor(Math.random() * TIPS.length));
 
         // Rotate tips every 8 seconds
-        const tipInterval = setInterval(() => {
-            setTipIndex(prev => (prev + 1) % TIPS.length);
-        }, 8000);
+        const rotateTip = () => {
+            if (!document.hidden) {
+                setTipIndex(prev => (prev + 1) % TIPS.length);
+            }
+        };
+
+        const tipInterval = setInterval(rotateTip, 8000);
 
         return () => {
             clearTimeout(timer);

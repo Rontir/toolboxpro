@@ -181,6 +181,10 @@ export default function PikoEmpiko() {
 
             const poll = setInterval(async () => {
                 try {
+                    if (document.hidden) {
+                        return;
+                    }
+
                     const pRes = await fetch(apiUrl(`/api/progress/${job_id}`));
                     const pData = await pRes.json();
 
@@ -251,6 +255,10 @@ export default function PikoEmpiko() {
 
             const poll = setInterval(async () => {
                 try {
+                    if (document.hidden) {
+                        return;
+                    }
+
                     const pRes = await fetch(apiUrl(`/api/progress/${job_id}`));
                     const pData = await pRes.json();
 

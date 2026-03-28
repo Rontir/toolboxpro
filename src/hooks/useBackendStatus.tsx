@@ -17,8 +17,12 @@ export function useBackendStatus(checkInterval: number = 30000) {
 
     useEffect(() => {
         const checkBackend = async () => {
+            if (typeof document !== 'undefined' && document.hidden) {
+                setStatus(prev => ({ ...prev, checking: false }));
+                return;
+            }
+
             const url = '/api/health';
-            console.log('LOCAL API health check:', url);
             setStatus(prev => ({ ...prev, checking: true }));
 
             try {
@@ -49,10 +53,26 @@ export function useBackendStatus(checkInterval: number = 30000) {
         // Initial check
         checkBackend();
 
-        // Set up interval
-        const intervalId = setInterval(checkBackend, checkInterval);
+        const hiddenInterval = Math.max(checkInterval * 10, 5 * 60 * 1000);
+        let intervalId = setInterval(checkBackend, document.hidden ? hiddenInterval : checkInterval);
 
-        return () => clearInterval(intervalId);
+        const restartInterval = () => {
+            clearInterval(intervalId);
+            intervalId = setInterval(checkBackend, document.hidden ? hiddenInterval : checkInterval);
+
+            if (!document.hidden) {
+                checkBackend();
+            }
+        };
+
+        document.addEventListener('visibilitychange', restartInterval);
+        window.addEventListener('online', checkBackend);
+
+        return () => {
+            clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', restartInterval);
+            window.removeEventListener('online', checkBackend);
+        };
     }, [checkInterval]);
 
     return status;

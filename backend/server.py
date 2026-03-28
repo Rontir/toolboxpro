@@ -12,6 +12,9 @@ import logging
 from datetime import datetime
 import shutil
 import json
+import glob
+import tempfile
+import threading
 from typing import List, Dict, Optional
 from pydantic import BaseModel
 # from backend_processor import process_perfume_data, EanChecker, StructureMatcher, PikoEmpiko, PikoEmpikoLocal
@@ -63,30 +66,93 @@ def get_cors_origins() -> List[str]:
         "https://toolboxpro-api.onrender.com",
     ]
 
-# Initialize database on startup (only if auth is available)
-@app.on_event("startup")
-def startup_event():
-    if AUTH_AVAILABLE:
-        try:
-            init_db()
-            print("✅ Database initialized")
-        except Exception as e:
-            print(f"⚠️ Database init failed: {e}")
-
 # Security
 security = HTTPBearer(auto_error=False)
 
 # Job Store
 jobs: Dict[str, dict] = {}
 
+
+def get_int_env(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if not raw_value:
+        return default
+    try:
+        return max(0, int(raw_value))
+    except ValueError:
+        logging.warning("Invalid integer env %s=%s, using default %s", name, raw_value, default)
+        return default
+
+
+JOB_RESULT_TTL_SECONDS = get_int_env("JOB_RESULT_TTL_SECONDS", 600)
+TEMP_FILE_TTL_SECONDS = get_int_env("TEMP_FILE_TTL_SECONDS", 600)
+
 def update_progress(job_id, current, total):
     if job_id in jobs:
         jobs[job_id]['progress'] = int((current / total) * 100) if total > 0 else 0
         jobs[job_id]['status'] = 'processing'
 
-def cleanup_job(job_id):
-    # Optional: cleanup old jobs after some time
-    pass
+def _delete_temp_path(path: str) -> None:
+    try:
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        elif os.path.isfile(path):
+            os.remove(path)
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        logging.warning("Failed to delete temp path %s: %s", path, exc)
+
+
+def cleanup_stale_temp_files() -> None:
+    now_ts = datetime.now().timestamp()
+    cutoff_ts = now_ts - TEMP_FILE_TTL_SECONDS
+    temp_root = tempfile.gettempdir()
+
+    for path in glob.glob(os.path.join(temp_root, "piko_result_*.zip")):
+        try:
+            if os.path.getmtime(path) < cutoff_ts:
+                _delete_temp_path(path)
+        except FileNotFoundError:
+            continue
+
+    processing_root = os.path.join(temp_root, "piko_processing")
+    if os.path.isdir(processing_root):
+        for path in glob.glob(os.path.join(processing_root, "*")):
+            try:
+                if os.path.getmtime(path) < cutoff_ts:
+                    _delete_temp_path(path)
+            except FileNotFoundError:
+                continue
+
+
+def cleanup_job(job_id: str) -> None:
+    job = jobs.pop(job_id, None)
+    if not job:
+        return
+
+    result = job.get('result') or {}
+    file_path = result.get('file_path')
+    if file_path and os.path.basename(file_path).startswith("piko_result_"):
+        _delete_temp_path(file_path)
+
+
+def schedule_job_cleanup(job_id: str, delay_seconds: int = JOB_RESULT_TTL_SECONDS) -> None:
+    timer = threading.Timer(delay_seconds, cleanup_job, args=(job_id,))
+    timer.daemon = True
+    timer.start()
+
+
+# Initialize database on startup (only if auth is available)
+@app.on_event("startup")
+def startup_event():
+    cleanup_stale_temp_files()
+    if AUTH_AVAILABLE:
+        try:
+            init_db()
+            print("✅ Database initialized")
+        except Exception as e:
+            print(f"⚠️ Database init failed: {e}")
 
 origins = get_cors_origins()
 
@@ -938,9 +1004,16 @@ async def piko_empiko(
     pim_version: str = Form("PIM3")
 ):
     try:
+        cleanup_stale_temp_files()
         content = await file.read()
         job_id = str(uuid.uuid4())
-        jobs[job_id] = {'status': 'pending', 'progress': 0, 'result': None, 'error': None}
+        jobs[job_id] = {
+            'status': 'pending',
+            'progress': 0,
+            'result': None,
+            'error': None,
+            'created_at': datetime.now().isoformat(),
+        }
         
         # Parse boolean options
         opts = {
@@ -981,11 +1054,14 @@ async def piko_empiko(
                 jobs[jid]['status'] = 'completed'
                 jobs[jid]['result'] = {'file_path': output_path, 'filename': filename}
                 jobs[jid]['progress'] = 100
+                jobs[jid]['completed_at'] = datetime.now().isoformat()
+                schedule_job_cleanup(jid)
             except Exception as e:
                 logging.error(f"[{jid}] Error in process_task: {e}")
                 logging.error(traceback.format_exc())
                 jobs[jid]['status'] = 'error'
                 jobs[jid]['error'] = str(e)
+                schedule_job_cleanup(jid)
 
         background_tasks.add_task(process_task, job_id, content, col_index, col_main, col_extra, opts)
         
@@ -1002,10 +1078,17 @@ async def piko_local(
     options: str = Form("{}")
 ):
     try:
+        cleanup_stale_temp_files()
         excel_content = await file.read() if file else None
         opts = json.loads(options)
         job_id = str(uuid.uuid4())
-        jobs[job_id] = {'status': 'pending', 'progress': 0, 'result': None, 'error': None}
+        jobs[job_id] = {
+            'status': 'pending',
+            'progress': 0,
+            'result': None,
+            'error': None,
+            'created_at': datetime.now().isoformat(),
+        }
         
         def process_task(jid, mode, folder, content, opts):
             try:
@@ -1018,9 +1101,12 @@ async def piko_local(
                 jobs[jid]['status'] = 'completed'
                 jobs[jid]['result'] = result
                 jobs[jid]['progress'] = 100
+                jobs[jid]['completed_at'] = datetime.now().isoformat()
+                schedule_job_cleanup(jid)
             except Exception as e:
                 jobs[jid]['status'] = 'error'
                 jobs[jid]['error'] = str(e)
+                schedule_job_cleanup(jid)
 
         background_tasks.add_task(process_task, job_id, mode, folder_path, excel_content, opts)
         
