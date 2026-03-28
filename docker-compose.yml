@@ -12,6 +12,8 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.119:3000}
       JOB_RESULT_TTL_SECONDS: ${JOB_RESULT_TTL_SECONDS:-600}
       TEMP_FILE_TTL_SECONDS: ${TEMP_FILE_TTL_SECONDS:-600}
+      MIN_FREE_DISK_MB: ${MIN_FREE_DISK_MB:-1024}
+      MAX_DISK_USAGE_PERCENT: ${MAX_DISK_USAGE_PERCENT:-90}
     volumes:
       - ./backend/temp_processing:/app/backend/temp_processing
       - toolboxpro-data:/data

@@ -86,11 +86,14 @@ def get_int_env(name: str, default: int) -> int:
 
 JOB_RESULT_TTL_SECONDS = get_int_env("JOB_RESULT_TTL_SECONDS", 600)
 TEMP_FILE_TTL_SECONDS = get_int_env("TEMP_FILE_TTL_SECONDS", 600)
+MIN_FREE_DISK_MB = get_int_env("MIN_FREE_DISK_MB", 1024)
+MAX_DISK_USAGE_PERCENT = get_int_env("MAX_DISK_USAGE_PERCENT", 90)
 
 def update_progress(job_id, current, total):
     if job_id in jobs:
         jobs[job_id]['progress'] = int((current / total) * 100) if total > 0 else 0
         jobs[job_id]['status'] = 'processing'
+        jobs[job_id]['last_accessed_at'] = datetime.now().isoformat()
 
 def _delete_temp_path(path: str) -> None:
     try:
@@ -102,6 +105,65 @@ def _delete_temp_path(path: str) -> None:
         pass
     except Exception as exc:
         logging.warning("Failed to delete temp path %s: %s", path, exc)
+
+
+def _parse_job_timestamp(value: Optional[str]) -> float:
+    if not value:
+        return 0.0
+    try:
+        return datetime.fromisoformat(value).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def is_disk_pressure_high() -> bool:
+    try:
+        usage = shutil.disk_usage(tempfile.gettempdir())
+    except FileNotFoundError:
+        return False
+
+    total_bytes = max(usage.total, 1)
+    free_mb = usage.free / (1024 * 1024)
+    used_percent = ((usage.used / total_bytes) * 100)
+    return free_mb < MIN_FREE_DISK_MB or used_percent >= MAX_DISK_USAGE_PERCENT
+
+
+def cleanup_finished_jobs(force_all_finished: bool = False) -> int:
+    removable_statuses = {'completed', 'error'}
+    candidates = []
+
+    for job_id, job in jobs.items():
+        if job.get('status') not in removable_statuses:
+            continue
+
+        if force_all_finished:
+            candidates.append((job_id, job))
+            continue
+
+        last_seen = (
+            _parse_job_timestamp(job.get('last_accessed_at'))
+            or _parse_job_timestamp(job.get('completed_at'))
+            or _parse_job_timestamp(job.get('created_at'))
+        )
+        if last_seen and last_seen < datetime.now().timestamp() - JOB_RESULT_TTL_SECONDS:
+            candidates.append((job_id, job))
+
+    candidates.sort(
+        key=lambda item: (
+            _parse_job_timestamp(item[1].get('last_accessed_at'))
+            or _parse_job_timestamp(item[1].get('completed_at'))
+            or _parse_job_timestamp(item[1].get('created_at'))
+        )
+    )
+
+    removed = 0
+    for job_id, _job in candidates:
+        cleanup_job(job_id)
+        removed += 1
+        if force_all_finished and not is_disk_pressure_high():
+            break
+
+    return removed
 
 
 def cleanup_stale_temp_files() -> None:
@@ -124,6 +186,16 @@ def cleanup_stale_temp_files() -> None:
                     _delete_temp_path(path)
             except FileNotFoundError:
                 continue
+
+    cleanup_finished_jobs(force_all_finished=False)
+
+    if is_disk_pressure_high():
+        cleanup_finished_jobs(force_all_finished=True)
+
+
+def touch_job(job_id: str) -> None:
+    if job_id in jobs:
+        jobs[job_id]['last_accessed_at'] = datetime.now().isoformat()
 
 
 def cleanup_job(job_id: str) -> None:
@@ -1013,6 +1085,7 @@ async def piko_empiko(
             'result': None,
             'error': None,
             'created_at': datetime.now().isoformat(),
+            'last_accessed_at': datetime.now().isoformat(),
         }
         
         # Parse boolean options
@@ -1088,6 +1161,7 @@ async def piko_local(
             'result': None,
             'error': None,
             'created_at': datetime.now().isoformat(),
+            'last_accessed_at': datetime.now().isoformat(),
         }
         
         def process_task(jid, mode, folder, content, opts):
@@ -1118,6 +1192,7 @@ async def piko_local(
 async def get_progress(job_id: str):
     if job_id not in jobs:
         return JSONResponse(status_code=404, content={"error": "Job not found"})
+    touch_job(job_id)
     return JSONResponse(status_code=200, content=jobs[job_id])
 
 @app.get("/api/download/{job_id}")
@@ -1126,6 +1201,7 @@ async def download_result(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     
     job = jobs[job_id]
+    touch_job(job_id)
     if job['status'] != 'completed':
         raise HTTPException(status_code=400, detail="Job not completed")
         
