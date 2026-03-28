@@ -632,7 +632,7 @@ export default function ImageConverter() {
                 />
                 <span className="icon" style={{ pointerEvents: 'none' }}>🖼️</span>
                 <p className="title" style={{ pointerEvents: 'none' }}>
-                    {files.length > 0 ? `${files.length} obrazów wybranych` : 'Przeciągnij obrazy lub folder tutaj'}
+                    {files.length > 0 ? `${files.length} obrazów wybranych` : 'Przeciągnij obrazy, folder lub ZIP tutaj'}
                 </p>
                 <p className="subtitle" style={{ marginBottom: inputSource ? '0.5rem' : '1rem', pointerEvents: 'none' }}>uzyj przyciskow ponizej albo wrzuc ZIP. Przycisk plikow tez akceptuje archiwa ZIP.</p>
                 {inputSource && (
@@ -694,6 +694,23 @@ export default function ImageConverter() {
                             🗑️ Wyczyść
                         </button>
                     )}
+                </div>
+                <div style={{ marginTop: '0.85rem', display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+                    <span
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.45rem',
+                            padding: '0.45rem 0.8rem',
+                            borderRadius: '999px',
+                            background: 'rgba(168, 85, 247, 0.12)',
+                            border: '1px solid rgba(168, 85, 247, 0.35)',
+                            color: 'var(--text-muted)',
+                            fontSize: '0.85rem',
+                        }}
+                    >
+                        📥 Obsługiwane wejście: pliki, foldery i ZIP
+                    </span>
                 </div>
             </div>
 
